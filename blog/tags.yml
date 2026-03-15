@@ -17,3 +17,13 @@ hola:
   label: Hola
   permalink: /hola
   description: Hola tag description
+
+wikipedia:
+  label: Wikipedia
+  permalink: /wikipedia
+  description: 维基百科
+
+scammer:
+  label: Scammer
+  permalink: /scammer
+  description: 诈骗犯
