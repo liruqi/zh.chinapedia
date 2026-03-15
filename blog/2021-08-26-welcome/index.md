@@ -1,29 +1,18 @@
 ---
 slug: welcome
 title: Welcome
-authors: [slorber, yangshun]
-tags: [facebook, hello, docusaurus]
+authors: [liruqi]
+tags: [wikipedia, hello, docusaurus]
 ---
 
-[Docusaurus blogging features](https://docusaurus.io/docs/blog) are powered by the [blog plugin](https://docusaurus.io/docs/api/plugins/@docusaurus/plugin-content-blog).
+大家好，欢迎来到中国百科（Chinapedia）。
 
-Here are a few tips you might find useful.
+在这里，我们共同致力于看中国、看世界。
 
-<!-- truncate -->
+### 我们的目标
+中国百科的使命是完善中文 UGC（用户生成内容）与 AIGC（人工智能生成内容）。我们深感现有的中文维基百科虽然规模宏大，但其审核机制过于严苛，且长期受特定群体把持，在许多内容的处理上带有明显的政治倾向。
 
-Simply add Markdown files (or folders) to the `blog` directory.
+我们在这里拥抱 AI，拥抱评论形式的原创内容。我们的目标是构建一个更真实、更具活力的中文知识家园。
 
-Regular blog authors can be added to `authors.yml`.
-
-The blog post date can be extracted from filenames, such as:
-
-- `2019-05-30-welcome.md`
-- `2019-05-30-welcome/index.md`
-
-A blog post folder can be convenient to co-locate blog post images:
-
-![Docusaurus Plushie](./docusaurus-plushie-banner.jpeg)
-
-The blog supports tags as well!
-
-**And if you don't want a blog**: just delete this directory, and use `blog: false` in your Docusaurus config.
+### 加入我们
+我们欢迎有各行业从业经验的人人士加入我们，从事分类内容管理与审核。您的加入将是完善中文知识图谱的关键力量。
