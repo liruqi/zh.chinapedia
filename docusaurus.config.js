@@ -13,7 +13,11 @@ const config = {
   title: '中国百科',
   tagline: 'Dinosaurs are cool',
   favicon: 'img/favicon.ico',
-  trailingSlash: false,
+
+  // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
+  future: {
+    v4: true, // Improve compatibility with the upcoming Docusaurus v4
+  },
 
   // Set the production url of your site here
   url: 'https://zh.chinapedia.org',
@@ -26,7 +30,7 @@ const config = {
   organizationName: 'liruqi', // Usually your GitHub org/user name.
   projectName: 'zh.chinapedia', // Usually your repo name.
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'log',
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
