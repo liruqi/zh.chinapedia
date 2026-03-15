@@ -13,11 +13,10 @@ const config = {
   title: '中国百科',
   tagline: 'Dinosaurs are cool',
   favicon: 'img/favicon.ico',
-
-  // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
-    v4: true, // Improve compatibility with the upcoming Docusaurus v4
+    v4: false,
   },
+  trailingSlash: false,
 
   // Set the production url of your site here
   url: 'https://zh.chinapedia.org',
@@ -66,7 +65,7 @@ const config = {
           // Useful options to enforce blogging best practices
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
+          onUntruncatedBlogPosts: 'ignore',
         },
         theme: {
           customCss: './src/css/custom.css',
