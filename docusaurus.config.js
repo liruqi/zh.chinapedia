@@ -13,11 +13,7 @@ const config = {
   title: '中国百科',
   tagline: 'Dinosaurs are cool',
   favicon: 'img/favicon.ico',
-
-  // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
-  future: {
-    v4: true, // Improve compatibility with the upcoming Docusaurus v4
-  },
+  trailingSlash: false,
 
   // Set the production url of your site here
   url: 'https://zh.chinapedia.org',
@@ -84,7 +80,7 @@ const config = {
         respectPrefersColorScheme: true,
       },
       navbar: {
-        title: 'My Site',
+        title: '中国百科',
         logo: {
           alt: 'My Site Logo',
           src: 'img/logo.svg',
@@ -112,7 +108,7 @@ const config = {
             items: [
               {
                 label: 'Tutorial',
-                to: '/docs/intro',
+                to: '/wiki/intro',
               },
             ],
           },
@@ -147,7 +143,7 @@ const config = {
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+        copyright: `Copyright © ${new Date().getFullYear()} 中国百科. Built with Docusaurus.`,
       },
       prism: {
         theme: prismThemes.github,
