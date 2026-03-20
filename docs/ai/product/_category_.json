@@ -1,0 +1,9 @@
+{
+  "label": "产品",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "slug": "ai-product",
+    "description": "介绍人工智能相关的各种产品、智能体等。"
+  }
+}
