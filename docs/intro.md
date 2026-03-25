@@ -2,46 +2,10 @@
 sidebar_position: 1
 ---
 
-# Tutorial Intro
+# 中国百科
 
-Let's discover **Docusaurus in less than 5 minutes**.
+欢迎来到中国百科，这是一个旨在收录和整理中文世界知识的百科全书。希望这里能对条目进行语义分类，借助当下的AI浪潮，重新建立一个全球华人的知识库。欢迎大家共同建设。
 
-## Getting Started
-
-Get started by **creating a new site**.
-
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
-
-### What you'll need
-
-- [Node.js](https://nodejs.org/en/download/) version 20.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
-
-## Generate a new site
-
-Generate a new Docusaurus site using the **classic template**.
-
-The classic template will automatically be added to your project after you run the command:
-
-```bash
-npm init docusaurus@latest my-website classic
-```
-
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
-```bash
-cd my-website
-npm run start
-```
-
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
-
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
-
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+* 网站：[chinapedia.org](https://chinapedia.org)
+* Telegram: [@chinapedia](https://t.me/chinapedia)
+* GitHub: [liruqi/zh.chinapedia](https://github.com/liruqi/zh.chinapedia)
