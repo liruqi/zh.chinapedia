@@ -3,46 +3,62 @@ import sys
 import os
 
 def convert_citations(content):
-    # 1. Convert reference list at the bottom: [n] content -> [^n]: content
-    # Look for lines starting with [n] followed by a space or tab
-    content = re.sub(r'(?m)^\[(\d+)\]\s+(.*)', r'[^\1]: \2', content)
-
-    # 2. Convert in-text citations: [1, 2, 3] -> [^1][^2][^3]
-    # We need to be careful not to match the footnote definitions we just created.
-    # We'll use a regex that looks for [n] or [n, m, ...] BUT NOT preceded by ^ (start of line)
-    # Actually, a better way is to find all [n, m] patterns and replace them if they aren't part of a link or footnote definition.
+    # Skip if it already looks like it's been converted and has no more patterns to convert
+    # Heuristic: If it has footnote definitions but NO old-style references at start of line
+    # Actually, let's just do the conversion and check if anything changed.
     
+    # 1. Convert reference list at the bottom: [n] content -> [^n]: content
+    new_content = re.sub(r'(?m)^\[(\d+)\]\s+(.*)', r'[^\1]: \2', content)
+
+    # 2. Convert in-text citations: [1, 2, 3] -> [^1] [^2] [^3]
     def replace_citation(match):
         citations = match.group(1).split(',')
         return ' '.join([f'[^{c.strip()}]' for c in citations])
 
-    # Pattern: [ followed by digits and commas, followed by ]
-    # Ensure it's not a footnote definition (which now starts with [^n]:)
-    # And not a link title [link](url)
-    content = re.sub(r'(?<!\^|\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()', replace_citation, content)
+    new_content = re.sub(r'(?<!\^|\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()', replace_citation, new_content)
 
-    return content
+    return new_content
 
 def process_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    new_content = convert_citations(content)
-    
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(new_content)
-    print(f"Processed: {filepath}")
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        new_content = convert_citations(content)
+        
+        if new_content == content:
+            print(f"Skipped (already converted or no citations): {filepath}")
+            return False
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        print(f"MODIFIED: {filepath}")
+        return True
+    except Exception as e:
+        print(f"Error processing {filepath}: {e}")
+        return False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python convert_citations.py <file1> <file2> ...")
+        print("Usage: python convert_citations.py <file1_or_dir> <file2_or_dir> ...")
         sys.exit(1)
+    
+    modified_count = 0
+    skipped_count = 0
     
     for arg in sys.argv[1:]:
         if os.path.isfile(arg):
-            process_file(arg)
+            if process_file(arg):
+                modified_count += 1
+            else:
+                skipped_count += 1
         elif os.path.isdir(arg):
             for root, dirs, files in os.walk(arg):
                 for file in files:
-                    if file.endswith(".md") or file.endswith(".mdx"):
-                        process_file(os.path.join(root, file))
+                    if file.endswith((".md", ".mdx")):
+                        if process_file(os.path.join(root, file)):
+                            modified_count += 1
+                        else:
+                            skipped_count += 1
+                            
+    print(f"\nSummary: {modified_count} files modified, {skipped_count} files skipped.")
