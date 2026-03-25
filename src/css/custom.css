@@ -28,3 +28,40 @@
   --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+/* Footnotes styling like Wikipedia */
+.footnote-ref {
+  vertical-align: super;
+  font-size: 0.75em;
+  margin-left: 2px;
+  text-decoration: none !important;
+}
+
+.footnote-ref::before {
+  content: "[";
+}
+
+.footnote-ref::after {
+  content: "]";
+}
+
+.footnotes {
+  margin-top: 3rem;
+  font-size: 0.9em;
+  border-top: 1px solid var(--ifm-hr-border-color);
+  padding-top: 1rem;
+}
+
+.footnotes hr {
+  display: none;
+}
+
+.footnotes ol {
+  padding-left: 1.5rem;
+}
+
+.footnote-backref {
+  margin-left: 5px;
+  text-decoration: none !important;
+  font-family: sans-serif;
+}
