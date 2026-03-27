@@ -95,7 +95,7 @@ const config = {
             position: 'left',
             label: '条目',
           },
-          { to: '/blog', label: 'Blog', position: 'left' },
+          { to: '/blog', label: '博客', position: 'left' },
           {
             href: 'https://github.com/liruqi/zh.chinapedia',
             label: 'GitHub',
