@@ -83,6 +83,7 @@ const config = {
       metadata: [
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:site', content: '@zhchinapedia' },
+        { name: 'twitter:creator', content: '@zhchinapedia' },
         { name: 'og:locale', content: 'zh_CN' },
         { name: 'og:type', content: 'website' },
         { name: 'og:site_name', content: '中国百科' },
