@@ -77,8 +77,16 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
-      // Replace with your project's social card
+      // Replace with your project's social card (used for Open Graph)
       image: 'img/docusaurus-social-card.jpg',
+      // Global meta tags (including Twitter Card)
+      metadata: [
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:site', content: '@zhchinapedia' },
+        { name: 'og:locale', content: 'zh_CN' },
+        { name: 'og:type', content: 'website' },
+        { name: 'og:site_name', content: '中国百科' },
+      ],
       colorMode: {
         respectPrefersColorScheme: true,
       },
