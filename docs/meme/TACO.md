@@ -1,7 +1,7 @@
 ---
 title: TACO
 description: "TACO 是 'Trump Always Chickens Out' 的缩写，这一网梗起源于2025年，成为讽刺特朗普政策反复的政治与金融现象。"
-image: /img/docusaurus-social-card.jpg
+image: /img/TACO-card.svg
 ---
 
 在 2025 年，“TACO”成为了一个极具影响力的政治与金融网络梗，主要针对美国总统唐纳德·特朗普的政策风格。 [^1] 
