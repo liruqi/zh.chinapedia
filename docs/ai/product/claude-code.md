@@ -1,8 +1,12 @@
 ---
 title: Claude Code
-description: Google AI Overview 搜索结果的 Claude Code 介绍
-date: 2025-03-31
-source: Google AI Overview
+description: 包含 2026-03-31 源代码泄漏事件更新
+date: 2026-03-31
+sources:
+  - Google AI Overview
+  - Byteiota (2026-03-31)
+  - Dev.to (2026-03-31)
+  - LowCode Agency (2026-03-31)
 ---
 
 # Claude Code Overview
@@ -40,3 +44,68 @@ Claude Code 通常包含在 Anthropic 的付费计划中：
   - Windows: `irm https://claude.ai/install.ps1 | iex`（PowerShell）
 - **Authentication**: 在终端运行 `claude`，按浏览器提示登录
 - **Initialization**: 在项目文件夹中运行 `/init` 初始化环境
+
+## 2026-03-31 源代码泄漏事件
+
+### 事件概述
+
+2026 年 3 月 31 日，Anthropic 的 Claude Code 源代码因 **npm 包配置错误** 意外公开。安全研究员 **Chaofan Shou**（[@shoucccc](https://x.com/shoucccc)）发现发布的 npm 包中包含 source map 文件，该文件指向一个 R2 存储桶，暴露了完整的未混淆 TypeScript 代码库。
+
+> **重要区分**：泄漏的是 **Claude Code CLI 工具的源代码**，而非 Claude AI 模型本身。模型权重、训练数据和核心基础设施未受影响。
+
+### 泄漏规模
+
+- **512,000+ 行** TypeScript 代码
+- **~1,900 个** 文件
+- **~40 个** 权限控制的工具（base tool definition  alone 29,000 行）
+- **46,000 行** 查询引擎（query engine）
+- 多代理编排系统、IDE bridge、持久化内存系统
+- 未发布功能：如 "Kairos" 模式和 "Buddy" 伴侣系统
+
+泄漏代码已存档至 GitHub 仓库（如 `github.com/instructkr/claude-code`），数小时内获得 **1,100+ stars** 和 **1,900+ forks**。
+
+### 技术原因
+
+Claude Code 使用 **Bun** 作为运行时，默认生成 source map 文件。由于 `.npmignore` 或 `package.json` 的 `files` 字段配置错误，`.map` 文件被包含在生产发布的 npm 包中。source map 直接引用了 R2 存储桶中的原始 TypeScript 源码，导致完整代码库公开。
+
+这与同一日发生的 **Axios npm 供应链攻击**（受感染维护者账户部署 RAT）形成对比——此次泄漏是配置失误，而非针对性攻击。
+
+### 影响评估
+
+| 项目 | 状态 |
+|------|------|
+| Claude AI 模型权重 | ✅ 未泄漏 |
+| 训练数据 | ✅ 未泄漏 |
+| API 密钥 | ✅ 未泄漏 |
+| 用户数据 | ✅ 未泄漏 |
+| Claude Code CLI 源码 | ⚠️ 已公开 |
+
+**对用户的影响**：
+- **API 用户 / SaaS 构建者**：无直接风险，API 密钥和数据未暴露
+- **Claude Code 用户**：工具功能不受影响，可继续正常使用
+- **企业客户**：核心基础设施和模型能力保持安全
+
+**对 Anthropic 的影响**：
+- 知识产权暴露：内部架构、工具实现、未发布功能细节公开
+- 竞争情报流失：竞争对手可研究其 CLI 设计
+- 信任影响：五天内的第二起重大配置失误（3 月 26 日 CMS 配置错误曾暴露 Claude Mythos 模型细节）
+
+### 用户建议
+
+- **无需特殊行动**：继续正常使用 Claude Code
+- **npm 发布者**：运行 `npm pack --dry-run` 验证发布内容；确保 `.map` 文件被排除
+- **谨慎下载**：泄漏仓库可能携带恶意软件；仅通过可信分析师的技术文章了解架构
+- **关注官方更新**：Anthropic 可能发布安全建议或工具更新
+
+### 技术亮点（值得学习）
+
+尽管是意外泄漏，代码库展示了高质量的工程实践：
+
+- **工具系统**：~40 个权限隔离的工具，base definition 达 29K 行
+- **查询引擎**：46K 行，处理所有 LLM API 调用、流式传输、缓存
+- **多代理编排**：支持 "swarms" 并行任务
+- **IDE Bridge**：JWT 认证通道连接 VS Code/JetBrains 扩展
+- **技术栈**：Bun（运行时）+ React+Ink（终端 UI）+ Zod v4（验证）+ ~50 个 slash 命令
+- **懒加载**：OpenTelemetry、gRPC 等重型依赖按需加载
+
+> **参考来源**：Byteiota (2026-03-31), Dev.to (2026-03-31), LowCode Agency (2026-03-31), Cybernews, VentureBeat, SocRadar, Analytics India Magazine, Binance Square, Penligent.ai
