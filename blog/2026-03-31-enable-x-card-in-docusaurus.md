@@ -1,8 +1,8 @@
 To enable X (formerly Twitter) cards in Docusaurus, you primarily configure the metadata within your docusaurus.config.js (or .ts) file. Docusaurus uses these settings to populate the <head> tags that social media platforms crawl to generate preview cards. [1, 2, 3] 
 ## 1. Global Configuration
 Open your docusaurus.config.js and add or update the themeConfig object. This sets the default card behavior for your entire site. [2, 4, 5] 
-
-// docusaurus.config.jsmodule.exports = {
+```
+docusaurus.config.jsmodule.exports = {
   // ... other config
   themeConfig: {
     metadata: [
@@ -13,6 +13,7 @@ Open your docusaurus.config.js and add or update the themeConfig object. This se
     image: 'img/docusaurus-social-card.jpg', // Path to your default social card image
   },
 };
+```
 
 ## 2. Individual Page Metadata
 If you want a specific blog post or documentation page to have its own unique X card image, you can override the global settings using Front Matter at the top of your Markdown file. [1, 6] 
