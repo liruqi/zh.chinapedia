@@ -49,7 +49,7 @@ Claude Code 通常包含在 Anthropic 的付费计划中：
 
 ### 事件概述
 
-2026 年 3 月 31 日，Anthropic 的 Claude Code 源代码因 **npm 包配置错误** 意外公开。安全研究员 **Chaofan Shou**（[@shoucccc](https://x.com/shoucccc)）发现发布的 npm 包中包含 source map 文件，该文件指向一个 R2 存储桶，暴露了完整的未混淆 TypeScript 代码库。
+2026 年 3 月 31 日，Anthropic 的 Claude Code 源代码因 **npm 包配置错误** 意外公开。安全研究员 **Chaofan Shou** 发现发布的 npm 包中包含 source map 文件，该文件指向一个 R2 存储桶，暴露了完整的未混淆 TypeScript 代码库。
 
 > **重要区分**：泄漏的是 **Claude Code CLI 工具的源代码**，而非 Claude AI 模型本身。模型权重、训练数据和核心基础设施未受影响。
 
@@ -62,7 +62,7 @@ Claude Code 通常包含在 Anthropic 的付费计划中：
 - 多代理编排系统、IDE bridge、持久化内存系统
 - 未发布功能：如 "Kairos" 模式和 "Buddy" 伴侣系统
 
-泄漏代码已存档至 GitHub 仓库（如 `github.com/instructkr/claude-code`），数小时内获得 **1,100+ stars** 和 **1,900+ forks**。
+泄漏代码已存档至 GitHub 仓库（如 [github.com/instructkr/claude-code](https://github.com/instructkr/claude-code)），数小时内获得 **1,100+ stars** 和 **1,900+ forks**。
 
 ### 技术原因
 
