@@ -109,3 +109,18 @@ Claude Code 使用 **Bun** 作为运行时，默认生成 source map 文件。�
 - **懒加载**：OpenTelemetry、gRPC 等重型依赖按需加载
 
 > **参考来源**：Byteiota (2026-03-31), Dev.to (2026-03-31), LowCode Agency (2026-03-31), Cybernews, VentureBeat, SocRadar, Analytics India Magazine, Binance Square, Penligent.ai
+
+## 相关资源
+
+- [Claude Code Overview - Claude Code Docs](https://code.claude.com/docs/en/overview)
+- [Quickstart Guide](https://code.claude.com/docs/en/quickstart)
+- [Terminal Guide](https://code.claude.com/docs/en/terminal-guide)
+- [VS Code Extension](https://code.claude.com/docs/en/vs-code)
+- [Claude Code on the Web](https://code.claude.com/docs/en/claude-code-on-the-web)
+- [How Claude Code Works](https://code.claude.com/docs/en/how-claude-code-works)
+- [Skills Documentation](https://code.claude.com/docs/en/skills)
+- [The Claude Code Handbook](https://www.freecodecamp.org/news/claude-code-handbook/) (freeCodeCamp)
+- [What It Is and How It's Different](https://www.producttalk.org/claude-code-what-it-is-and-how-its-different/) (Product Talk)
+- [Medium: Claude Code is Great](https://leo-godin.medium.com/claude-code-is-great-6db35d8685f0)
+- [YouTube: Introducing Claude Code](https://www.youtube.com/watch?v=AJpK3YTTKZ4)
+- [YouTube: Full Tutorial for Beginners](https://www.youtube.com/watch?v=ntDIxaeo3Wg)
