@@ -1,3 +1,10 @@
+---
+slug: enable-x-card-in-docusaurus
+title: Enable X (Twitter) Cards in Docusaurus
+authors: [liruqi]
+tags: [docusaurus, seo, guide]
+---
+
 To enable X (formerly Twitter) cards in Docusaurus, you primarily configure the metadata within your docusaurus.config.js (or .ts) file. Docusaurus uses these settings to populate the `&lt;head&gt;` tags that social media platforms crawl to generate preview cards. [1, 2, 3]
 
 ## 1. Global Configuration
