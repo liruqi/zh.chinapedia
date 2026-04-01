@@ -62,7 +62,7 @@ Claude Code 通常包含在 Anthropic 的付费计划中:
 - 多代理编排系统、IDE bridge、持久化内存系统
 - 未发布功能:如 "Kairos" 模式和 "Buddy" 伴侣系统
 
-原始泄漏版本的代码存档于 Radicle 网络([https://rad.thaiwen.com/nodes/rad.thaiwen.com/rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J](https://rad.thaiwen.com/nodes/rad.thaiwen.com/rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J))[^15]。社区基于泄漏代码重写为 [claw-code](https://github.com/instructkr/claw-code),当前 ⭐ **62K+**、⑂ **64K+**[^14]*(数据截至 2026-04-01)*。
+原始泄漏版本的代码存档于 Radicle 网络([rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J](https://rad.thaiwen.com/nodes/rad.thaiwen.com/rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J))[^15]。社区基于泄漏代码重写为 [claw-code](https://github.com/instructkr/claw-code),当前 ⭐ **62K+**、⑂ **64K+**[^14]*(数据截至 2026-04-01)*。
 
 ### 技术原因
 
