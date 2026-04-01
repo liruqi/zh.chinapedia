@@ -9,7 +9,7 @@ sources:
   - LowCode Agency (2026-03-31)
 ---
 
-# Claude Code Overview
+# Claude Code
 
 **Claude Code** 是由 Anthropic 开发的智能 AI 编码工具,直接嵌入你的开发环境。与简单的自动补全工具不同,它可以读取你的代码库、规划复杂功能、编辑多个文件,并自主执行终端命令来修复 bug 和构建功能[^1]。
 
@@ -62,7 +62,7 @@ Claude Code 通常包含在 Anthropic 的付费计划中:
 - 多代理编排系统、IDE bridge、持久化内存系统
 - 未发布功能:如 "Kairos" 模式和 "Buddy" 伴侣系统
 
-泄漏代码已存档至社区镜像仓库([github.com/instructkr/claw-code](https://github.com/instructkr/claw-code)),由社区基于泄漏代码重写,当前 ⭐ **42,000+**、⑂ **52,000+**[^14]。
+泄漏代码已存档至社区镜像仓库([github.com/instructkr/claw-code](https://github.com/instructkr/claw-code)),由社区基于泄漏代码重写,当前 ⭐ **62,749**、⑂ **64,364**[^14]*(数据截至 2026-04-01)*。
 
 原始泄漏版本的代码存档于 Radicle 网络[^15]:
 - https://rad.thaiwen.com/nodes/rad.thaiwen.com/rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J
@@ -127,7 +127,7 @@ Claude Code 使用 **Bun** 作为运行时,默认生成 source map 文件。由�
 [^12]: Dev.to. (2026-03-31). ["Claude Code's Entire Source Code Was Just Leaked via npm Source Maps — Here's What's Inside"](https://dev.to/gabrielanhaia/claude-codes-entire-source-code-was-just-leaked-via-npm-source-maps-heres-whats-inside-cjo). Retrieved 2026-04-01.
 [^13]: LowCode Agency. (2026-03-31). ["Claude Code Source Code Leaked? Here's what it contains"](https://www.lowcode.agency/blog/claude-code-source-code-leaked). Retrieved 2026-04-01.
 [^14]: LowCode Agency. (2026-03-31). *Note: Community rewrite at [github.com/instructkr/claw-code](https://github.com/instructkr/claw-code) (42k★, 52k⑂ as of 2026-04-01)*.
-[^15]: Original leak archive via Radicle: https://rad.thaiwen.com/nodes/rad.thaiwen.com/rad:z3A4N5uDRVxqrqHoGFn6fu12YV82J.
+[^15]: Original leak archive (Radicle): unavailable after content removal.
 [^16]: SocRadar. (2026-03-31). ["Claude Code Leak: What You Need to Know"](https://socradar.io/blog/claude-code-leak-what-to-know/). Retrieved 2026-04-01.
 [^17]: Penligent.ai. (2026-03-31). ["Claude Code Source Map Leak, What Was Exposed and What It Means"](https://www.penligent.ai/hackinglabs/claude-code-source-map-leak-what-was-exposed-and-what-it-means/). Retrieved 2026-04-01.
 [^18]: VentureBeat. (2026-03-31). ["Claude Code's source code appears to have leaked: here's what we know"](https://venturebeat.com/technology/claude-codes-source-code-appears-to-have-leaked-heres-what-we-know/). Retrieved 2026-04-01.
