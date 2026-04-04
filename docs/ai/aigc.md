@@ -1,3 +1,7 @@
+---
+title: AIGC
+---
+
 人工智能生成内容（英语：Artificial Intelligence Generated Content，简称 AIGC），又称生成式人工智能（Generative AI），是利用人工智能技术自动生产内容的新型生产方式。它是继专业生产内容（PGC）和用户生产内容（UGC）之后，内容创作领域的又一次范式转移。
 AIGC 通过算法模型，根据用户的指令（Prompt）在对话、故事、图像、视频、音频和代码等多个维度，实现自动化或半自动化的数字内容生成与交互。
 

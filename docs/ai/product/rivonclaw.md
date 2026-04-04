@@ -1,3 +1,8 @@
+---
+title: RivonClaw
+tags: [oss]
+---
+
 RivonClaw 是一个构建在 OpenClaw 之上的开源桌面端应用和 UI 层，旨在将长期运行的 AI Agent（人工智能代理）转变为个人的“数字管家”。 [^1] [^2] 
 
 ## 核心功能与特点
