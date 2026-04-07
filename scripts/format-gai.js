@@ -107,7 +107,7 @@ const formattedSources = sourceEntries.map(entry => {
 });
 
 // Build title from query
-const title = query.charAt(0).toUpperCase() + query.slice(1) + ' AI 概述';
+const title = query.charAt(0).toUpperCase() + query.slice(1);
 
 const output = `# ${title}
 

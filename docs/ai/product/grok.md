@@ -1,24 +1,27 @@
-# Grok AI 概述
+# Grok
 
-Grok 是由埃隆·马斯克（Elon Musk）旗下的 AI 公司 xAI 开发的人工智能助理。它的设计灵感源自《银河系漫游指南》，旨在以带有幽默感和一丝叛逆的方式回答问题，并号称具有“理解宇宙”的愿景。
-以下是 Grok 的核心特点：
-多智能体协作：在专家模式下，Grok 4 支持多个 AI 智能体（Agents）协同工作，以提供更精准的复杂答案。
-开源与社区：xAI 曾开源了其早期模型 Grok-1 的权重，开发者可以在 GitHub 上获取。
-多平台可用：用户可以通过 Grok 官网、Google Play 或 App Store 访问。此外，它也集成在 Tesla 车辆软件中。
-词源背景：该词最初由科幻作家罗伯特·海因莱因在《异乡异客》中创造，意为“深刻地理解某事，以至于与之融为一体”。
-您是想了解如何订阅使用 Grok，还是想了解它的技术模型细节？
+Grok - 人工智能助理- Google Play 上的应用
+Grok 是由埃隆·马斯克（Elon Musk）创立的人工智能公司 xAI 开发的生成式人工智能聊天机器人。
+以下是关于 Grok 的核心信息：
+设计风格：它的设计灵感来源于《银河系漫游指南》，回答风格通常带有幽默感、反叛性，甚至有些“毒舌”。
+开放源代码：xAI 已经开源了其早期模型 Grok-1 的权重和架构，采用 Apache 2.0 许可证。
+最新动态：2025 年 7 月发布的 Grok 4 引入了多智能体系统，进一步提升了其理解世界的能力。近期，Grok 还推出了自动翻译功能，并整合进 SpaceX 的相关业务生态。
+你可以在 X 平台上或通过 Google Play 和 Apple App Store 下载其独立应用来体验。
+你想了解如何订阅 Grok，还是想知道它在编程或创意写作方面的具体表现？
+Grok - 維基百科，自由的百科全書
+* 專有 * Apache-2.0（Grok-1）
 
 ## 参考来源
 
 xAI:
     https://x.ai/
-**GitHub**: https://github.com/xai-org/grok-1
-**Grok 官网**: https://grok.com/
+**Grok**: https://grok.com/
+**SpaceX**: https://x.ai/news/grok-4
 Google Play:
     https://play.google.com/store/apps/details?id=ai.x.grok
-App Store:
+Apple App Store:
     https://apps.apple.com/us/app/grok-ai-chat-video/id6670324846
 
 ---
 
-*本文档自动生成于 2026-04-05T16:32:40.522Z，使用 OpenCLI google ai-mode 提取器*
+*本文档自动生成于 2026-04-07T15:34:57.342Z，使用 OpenCLI google ai-mode 提取器*

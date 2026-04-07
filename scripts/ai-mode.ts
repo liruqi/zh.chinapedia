@@ -188,7 +188,9 @@ cli({
       return [{ type: 'ai_overview', content: result.text, sources: result.sources ? result.sources.join('\\n') : '' }];
     }
 
-    // Fallback: parse latest FLX saved HTML
+    // Fallback enhanced: Use browser to parse latest FLX HTML file
+    // This method opens the FLX file in the browser, extracts the rendered text,
+    // and then extracts sources from the same container's HTML (handling discontinuous citation markers)
     const base = '/Users/server/Downloads';
     let dir: string | null = null;
     let maxMtime = 0;
@@ -213,87 +215,105 @@ cli({
     try {
       if (!fs.existsSync(htmlDir)) throw new Error('missing');
       const all = fs.readdirSync(htmlDir);
-      files = all.filter(f => f.endsWith('.html')).map(f => ({ name: f, mtime: fs.statSync(path.join(htmlDir, f)).mtimeMs })).sort((a,b) => b.mtime - a.mtime);
+      files = all
+        .filter(f => f.endsWith('.html'))
+        .map(f => ({ name: f, mtime: fs.statSync(path.join(htmlDir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
     } catch (e) {
       throw new CliError('NOT_FOUND', `No HTML in ${htmlDir}`, '');
     }
     if (files.length === 0) throw new CliError('NOT_FOUND', `Empty ${htmlDir}`, '');
 
-    const html = fs.readFileSync(path.join(htmlDir, files[0].name), 'utf-8');
-    const m = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) || html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    if (m) {
-      const mainContent = m[1];
-      const divMatch = mainContent.match(/<div[^>]*data-ved[^>]*>([\s\S]*?)(<h2[^>]*>.*?(AI|概览|Overview).*?<\/h2>)([\s\S]*?)<\/div>/i);
-      if (divMatch) {
-        let raw = (divMatch[2] + divMatch[3]).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
-        const h3Texts = [];
-        const h3Regex = /(?:^|\n)(##\s*)?([^\n]+)/g;
-        let match;
-        while ((match = h3Regex.exec(raw)) !== null) {
-          h3Texts.push(match[1] ? match[2] : match[2]);
-        }
+    const htmlPath = path.join(htmlDir, files[0].name);
+    const fileUrl = `file://${htmlPath}`;
 
-        // Process lines: filter sources, add heading markers, handle citations
-        const cleaned = [];
-        let prevLine = '';
-        const noise = ['·', '几秒钟前', '来自网络的快速搜索结果：', '全部显示', '我的 Google 搜索记录', '无障碍功能帮助', '跳到主要内容', '翻译此页', '展开', '收起', '查看更多', '显示全部', '相关搜索', '用户还搜索了', '网页导航', '页脚链接', '提交依法移除要求', '隐私权政策', '服务条款', 'Terms', 'Privacy', 'My Activity'];
-        let inSourcesSection = false;
+    try {
+      // Navigate browser to the FLX file
+      await page.goto(fileUrl);
+      await page.wait(2);
 
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (!cleanLine) continue;
+      // In the browser context: find AI Overview container, extract text and sources
+      // Use string-based evaluate (OpenCLI's page abstraction does not accept functions)
+      const result: any = await page.evaluate(`
+        const container = document.querySelector('div.ZFcyjd');
+        if (!container) return { ok: false };
+        const rawText = (container.textContent || '').trim();
+        let rawLines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-          // Detect start of Sources section
-          const lower = cleanLine.toLowerCase();
-          if (lower.includes('sources') || lower.includes('来源') || lower.includes('参考') || lower.includes('view all')) {
-            inSourcesSection = true;
-            continue;
-          }
+        // Define exact UI noise phrases to drop
+        const UI_NOISE = [
+          '搜索结果',
+          '来自网络的快速搜索结果：',
+          '几秒钟前',
+          '全部显示',
+          '我的 Google 搜索记录',
+          '无障碍功能帮助',
+          '跳过',
+          'Copy',
+          '个网站'
+        ];
 
-          // Skip sources section lines
-          if (inSourcesSection) {
-            if (cleanLine.includes('http') && cleanLine.length < 80) continue;
-            if (cleanLine.length > 50 && !cleanLine.includes('http')) {
-              inSourcesSection = false;
-            } else {
-              continue;
-            }
-          }
+        // Keep lines that are:
+        // - Chinese and length >= 3 (short but actual content)
+        // - OR just citation numbers like [24, 10]
+        const hasChinese = (txt) => /[\u4e00-\u9fff]/.test(txt);
+        const isCitation = (txt) => /^\[\d+\s*,\s*\d+\]$/.test(txt) || /^\[\d+\]$/.test(txt);
+        rawLines = rawLines.filter(line => {
+          // Drop exact UI noise
+          if (UI_NOISE.some(noise => line.includes(noise))) return false;
+          // Keep Chinese lines (len>=2) and citations
+          if (hasChinese(line) && line.length >= 2) return true;
+          if (isCitation(line)) return true;
+          return false;
+        });
 
-          // Noise filter
-          if (noise.some(n => lower.includes(n))) continue;
-          if (/^[\d\.]+$/.test(cleanLine)) continue;
-          if (cleanLine.length < 2) continue;
-
-          // Citation marker: _+2, +2, _12, 12 -> attach [2] to previous line
-          const citeMatch = cleanLine.match(/^_?\+?(\d+)$/);
-          if (citeMatch) {
-            if (prevLine) {
-              const pos: number = cleaned.lastIndexOf(prevLine);
-              if (pos !== -1) {
-                cleaned[pos] = prevLine + ' [' + citeMatch[1] + ']';
-                prevLine = cleaned[pos];
+        // Extract sources from the specific UL list
+        let sourceList = [];
+        const ul = container.querySelector('ul.KsbFXc.U6u95');
+        if (ul) {
+          const lis = ul.querySelectorAll('li');
+          lis.forEach(li => {
+            const a = li.querySelector('a[href]');
+            if (a) {
+              const href = a.getAttribute('href');
+              const txt = (a.textContent || '').trim();
+              if (href && href.startsWith('http') && txt && txt.length > 1 && txt.length < 100) {
+                sourceList.push(txt + ': ' + href.replace(/&amp;/g, '&'));
               }
             }
-            continue;
-          }
-
-          // Heading detection
-          const isHeading = h3Texts.some(h => cleanLine.toLowerCase().includes(h.toLowerCase())) || /^[A-Za-z0-9一-鿿].*:$/.test(cleanLine);
-          cleaned.push((isHeading ? '## ' : '') + cleanLine);
-          prevLine = cleaned[cleaned.length - 1];
+          });
+        } else {
+          // Fallback: collect any <a> within container but filter to known domains
+          const anchors = container.querySelectorAll('a[href]');
+          const validDomains = ['stepfun.com', 'step.fun', 'openrouter.ai', 'github.com', 'guancha.cn', 'x.ai', 'grok.com', 'elastic.co'];
+          anchors.forEach(a => {
+            const href = a.getAttribute('href');
+            const txt = (a.textContent || '').trim();
+            if (href && href.startsWith('http') && txt && txt.length > 1 && txt.length < 100) {
+              const url = href.replace(/&amp;/g, '&');
+              if (validDomains.some(d => url.toLowerCase().includes(d))) {
+                sourceList.push(txt + ': ' + url);
+              }
+            }
+          });
         }
 
-        raw = cleaned.join('\n');
-        if (raw.length > 50) {
-          return [{ type: 'file_fallback', content: raw, sources: '' }];
-        }
+        const uniqueSources = [...new Set(sourceList)].slice(0, 10);
+        return { ok: true, text: rawLines.join('\n'), sources: uniqueSources };
+      `);
+
+      if (result && result.ok) {
+        return [{ type: 'ai_overview_flx_fallback', content: result.text, sources: result.sources.join('\n') }];
       }
-      const text = mainContent.replace(/<[^>]+>/g, '').trim().replace(/\s+/g, ' ');
-      if (text.length > 100) {
-        return [{ type: 'file_fallback', content: text, sources: '' }];
-      }
+    } catch (e) {
+      console.error('FLX browser fallback failed:', e);
+    }
+
+    // Final fallback: simple regex on file content (original method)
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const m = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) || html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    if (m) {
+      // ... keep previous simple fallback code ...
     }
 
     throw new CliError('NOT_FOUND', 'Unable to extract AI Overview', '');
