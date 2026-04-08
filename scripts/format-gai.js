@@ -66,23 +66,54 @@ for (const lineRaw of lines) {
 content = contentLines.join('\n').trim();
 sources = sourceLines.join('\n').trim();
 
-// Filter content
-const filteredContent = content
-  .split('\n')
-  .map(l => l.trim())
-  .filter(l => {
-    if (!l) return false;
-    // Drop UI noise and app store link titles
-    if (l.includes('来自网络的快速搜索结果') || l.includes('个网站') || l.includes('分钟前') ||
-        l.includes('搜索结果') || l.includes('几秒钟前') || l.includes('仅显示') ||
-        l.includes('My Activity') || l.includes('Copy') ||
-        /人工智能助理/.test(l) || /Google Play 上的应用/.test(l) || (/App Store/.test(l) && l.length < 30)) return false;
-    // Keep Chinese (>=2) and citations
-    if (/[\u4e00-\u9fff]/.test(l) && l.length >= 2) return true;
-    if (/^\[\d+,\s*\d+\]$/.test(l) || /^\[\d+\]$/.test(l)) return true;
-    return false;
-  })
-  .join('\n');
+// 1) Split into lines
+let contentLinesArr = content.split('\n').map(l => l.trim());
+
+// 2) Remove pure-English lines (no Chinese chars) unless they contain citation numbers
+contentLinesArr = contentLinesArr.filter(l => {
+  if (!l) return false;
+  // Keep if contains Chinese
+  if (/[\u4e00-\u9fff]/.test(l)) return true;
+  // Keep citation markers like [24, 10]
+  if (/^\[\d+,\s*\d+\]$/.test(l) || /^\[\d+\]$/.test(l)) return true;
+  // Otherwise drop (pure English/non-Chinese)
+  return false;
+});
+
+// 3) Remove known noise patterns
+contentLinesArr = contentLinesArr.filter(l => {
+  if (l.includes('来自网络的快速搜索结果') || l.includes('个网站') || l.includes('分钟前') ||
+      l.includes('搜索结果') || l.includes('几秒钟前') || l.includes('仅显示') ||
+      l.includes('My Activity') || l.includes('Copy')) return false;
+  // Drop lines that are only App Store/Google Play titles (shorter than 40 chars)
+  if ((/App Store/.test(l) || /Google Play/.test(l)) && l.length < 40) return false;
+  return true;
+});
+
+// 4) Deduplicate adjacent similar lines (fuzzy: 80% overlap or exact)
+const deduped = [];
+for (let i = 0; i < contentLinesArr.length; i++) {
+  const cur = contentLinesArr[i];
+  const prev = deduped[deduped.length - 1];
+  if (prev) {
+    // Exact duplicate
+    if (cur === prev) continue;
+    // High overlap (>80% and length similar)
+    const len = Math.max(cur.length, prev.length);
+    if (len > 0) {
+      // Simple character overlap
+      let overlap = 0;
+      const minLen = Math.min(cur.length, prev.length);
+      for (let j = 0; j < minLen; j++) {
+        if (cur[j] === prev[j]) overlap++;
+      }
+      if (overlap / len > 0.8 && Math.abs(cur.length - prev.length) < 10) continue;
+    }
+  }
+  deduped.push(cur);
+}
+
+const filteredContent = deduped.join('\n');
 
 // Parse sources
 const rawSourceItems = sources.split('\\n').map(s => s.trim()).filter(Boolean);
