@@ -1,6 +1,5 @@
--- WoW Data Generator v5
--- Optimized for rilua (WoW Emulation environment)
--- Includes Dungeon/Instance support and map integration
+-- WoW Data Generator v6
+-- Includes NPC/Boss support and integrated cross-linking
 
 local ADDONS_DIR = "D:/Games/TurtleWoW/Interface/AddOns"
 local DOCS_BASE_DIR = "D:/SRC/GitHub/liruqi/zh.chinapedia/docs/wow/turtle"
@@ -13,6 +12,7 @@ end
 ensure_dir(DOCS_BASE_DIR .. "/quest")
 ensure_dir(DOCS_BASE_DIR .. "/item")
 ensure_dir(DOCS_BASE_DIR .. "/dungeon")
+ensure_dir(DOCS_BASE_DIR .. "/npc")
 
 -- Helper: Deep Merge
 local function deep_merge(target, source)
@@ -69,6 +69,7 @@ _G.AtlasQuest = { L = {}, data = {} }
 setmetatable(_G.AtlasQuest.L, { __index = function(t, k) return k end })
 
 _G.AtlasLoot_Data = {}
+_G.AtlasLootBossButtons = {}
 _G.AtlasLootItems = {}
 _G.AtlasMaps = {}
 
@@ -119,7 +120,7 @@ end
 print("Loading AtlasQuest data...")
 load_addon_file(ADDONS_DIR .. "/AtlasQuest/Locale/localization.en.lua")
 load_addon_file(ADDONS_DIR .. "/AtlasQuest/Locale/localization.cn.lua")
-load_addon_file(ADDONS_DIR .. "/AtlasQuest/AtlasQuest.lua") -- For AtlasMapToDungeon
+load_addon_file(ADDONS_DIR .. "/AtlasQuest/AtlasQuest.lua")
 
 print("Loading AtlasLoot database...")
 local loot_files = {"Instances.lua", "PvP.lua", "Crafting.lua", "Factions.lua", "Sets.lua", "WorldBosses.lua", "WorldEvents.lua"}
@@ -142,6 +143,10 @@ local function clean_string(s)
     return s:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
 end
 
+local function escape_pattern(s)
+    return s:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+end
+
 local translated_atlas = AceLocales["Atlas"] or {}
 
 -- Quests
@@ -157,11 +162,9 @@ find_quests(AtlasQuest.data)
 
 -- Items
 local items = {}
-local items_by_npc = {} -- Map NPC ID -> {item_id, ...}
-
 local function collect_items(tbl, source_name)
     if type(tbl) ~= "table" then return end
-    for _, entry in ipairs(tbl) do
+    for i, entry in ipairs(tbl) do
         if type(entry) == "table" and entry[1] and entry[1] ~= 0 then
             local i_id = tostring(entry[1])
             local i_name = clean_string(entry[3])
@@ -194,49 +197,144 @@ for _, q in pairs(all_quests) do
 end
 
 -- ==========================================
+-- NPC GENERATION LOGIC
+-- ==========================================
+local npcs = {}
+local npc_names_to_ids = {}
+
+for mapKey, pois in pairs(AtlasMaps) do
+    if type(pois) == "table" and pois.ZoneName then
+        local dungeon_name = clean_string(translated_atlas[pois.ZoneName[1]] or pois.ZoneName[1])
+        for i, poi in ipairs(pois) do
+            if type(poi) == "table" and poi[2] == 2 and poi[3] then -- NPC type
+                local id = tostring(poi[3])
+                local name = clean_string(poi[1]):gsub("^%d+%)%s+", "") -- Remove "1) " prefix
+                if id ~= "-1" then
+                    if not npcs[id] then
+                        npcs[id] = {id=id, name=name, locations={}, drops={}, quests={}}
+                    end
+                    table.insert(npcs[id].locations, {mapKey=mapKey, dungeonName=dungeon_name})
+                    npc_names_to_ids[name] = id
+                    
+                    -- Link Loot
+                    local loot_labels = AtlasLootBossButtons[mapKey]
+                    if loot_labels and loot_labels[i] and loot_labels[i] ~= "" then
+                        local loot_label = loot_labels[i]
+                        local loot_table = nil
+                        -- Try finding the loot table in DUNGEONS category first
+                        if AtlasLoot_Data["DUNGEONS"] and AtlasLoot_Data["DUNGEONS"][mapKey] then
+                            loot_table = AtlasLoot_Data["DUNGEONS"][mapKey][loot_label]
+                        end
+                        -- Fallback to searching all top categories
+                        if not loot_table then
+                            for cat, maps in pairs(AtlasLoot_Data) do
+                                if maps[mapKey] and maps[mapKey][loot_label] then
+                                    loot_table = maps[mapKey][loot_label]
+                                    break
+                                end
+                            end
+                        end
+                        
+                        if loot_table then
+                            for _, loot_entry in ipairs(loot_table) do
+                                if type(loot_entry) == "table" and loot_entry[1] and loot_entry[1] ~= 0 then
+                                    table.insert(npcs[id].drops, {id=tostring(loot_entry[1]), name=clean_string(loot_entry[3])})
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Associate Quests with NPCs
+for id, q in pairs(all_quests) do
+    local q_title = clean_string(q.title)
+    local q_aim = clean_string(q.aim)
+    local q_loc = clean_string(q.location)
+    
+    for npc_id, npc in pairs(npcs) do
+        if q_title:find(npc.name, 1, true) or q_aim:find(npc.name, 1, true) or q_loc:find(npc.name, 1, true) then
+            table.insert(npc.quests, {id=id, title=q_title})
+        end
+    end
+end
+
+-- ==========================================
 -- GENERATING DOCUMENTATION
 -- ==========================================
+print("Generating NPC files...")
+for id, npc in pairs(npcs) do
+    local f = io.open(DOCS_BASE_DIR .. "/npc/" .. id .. ".md", "w")
+    if f then
+        f:write("# " .. npc.name .. "\n\n")
+        f:write("**NPC ID:** " .. id .. "  \n")
+        f:write("**出现地点:**\n")
+        for _, loc in ipairs(npc.locations) do
+            f:write("- [" .. loc.dungeonName .. "](../dungeon/" .. loc.mapKey .. ".md)\n")
+        end
+        f:write("\n")
+        
+        if #npc.drops > 0 then
+            f:write("## 装备掉落\n")
+            f:write("| 物品 | ID |\n")
+            f:write("| :--- | :--- |\n")
+            for _, drop in ipairs(npc.drops) do
+                f:write("| [" .. drop.name .. "](../item/" .. drop.id .. ".md) | " .. drop.id .. " |\n")
+            end
+            f:write("\n")
+        end
+        
+        if #npc.quests > 0 then
+            f:write("## 相关任务\n")
+            for _, q in ipairs(npc.quests) do
+                f:write("- [" .. q.title .. "](../quest/" .. q.id .. ".md)\n")
+            end
+            f:write("\n")
+        end
+        f:close()
+    end
+end
+
 print("Generating Dungeon files...")
 local dungeon_list = {}
-
 for mapKey, data in pairs(AtlasMaps) do
     if type(data) == "table" and data.ZoneName then
         local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
         table.insert(dungeon_list, {key=mapKey, name=d_name, level=data.LevelRange})
-        
         local f = io.open(DOCS_BASE_DIR .. "/dungeon/" .. mapKey .. ".md", "w")
         if f then
-            f:write("# " .. clean_string(d_name) .. "\n\n")
-            f:write("![" .. clean_string(d_name) .. "](" .. clean_string(mapKey) .. ".png)\n\n")
+            f:write("# " .. d_name .. "\n\n")
+            f:write("![" .. d_name .. "](" .. mapKey .. ".png)\n\n")
             f:write("**位置:** " .. clean_string(translated_atlas[data.Location[1]] or data.Location[1]) .. "  \n")
             f:write("**适用等级:** " .. clean_string(data.LevelRange or "??") .. " (" .. clean_string(data.MinLevel or "??") .. "+)  \n")
             f:write("**人数上限:** " .. clean_string(data.PlayerLimit or "??") .. "人  \n\n")
-            
             f:write("## 关键点/首领\n")
             for i, poi in ipairs(data) do
                 if type(poi) == "table" and poi[1] then
-                    local poi_text = clean_string(poi[1])
-                    f:write("- " .. poi_text)
-                    if poi[2] == 2 and poi[3] then -- NPC type
-                        f:write(" ([掉落](#boss-" .. clean_string(poi[3]) .. "))")
+                    local name = clean_string(poi[1]):gsub("^%d+%)%s+", "")
+                    local id = tostring(poi[3] or "")
+                    f:write("- ")
+                    if poi[2] == 2 and id ~= "" and id ~= "-1" then
+                        f:write("[" .. clean_string(poi[1]) .. "](../npc/" .. id .. ".md)")
+                    else
+                        f:write(clean_string(poi[1]))
                     end
                     f:write("\n")
                 end
             end
             
-            -- Quests for this dungeon
             local q_idx = AtlasQuest.AtlasMapToDungeon[mapKey]
             if q_idx and AtlasQuest.data[q_idx] then
                 f:write("\n## 相关任务\n")
-                local factions = { {"联盟", 1}, {"部落", 2} }
-                for _, fact in ipairs(factions) do
+                for _, fact in ipairs({{"联盟", 1}, {"部落", 2}}) do
                     local quests = AtlasQuest.data[q_idx][fact[2]]
                     if quests and #quests > 0 then
                         f:write("### " .. fact[1] .. "\n")
                         for _, q in ipairs(quests) do
-                            if q.id then
-                                f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n")
-                            end
+                            f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n")
                         end
                     end
                 end
@@ -246,35 +344,46 @@ for mapKey, data in pairs(AtlasMaps) do
     end
 end
 
--- Generate Index for Dungeons
+-- Dungeon README
 table.sort(dungeon_list, function(a, b) return (a.level or "") < (b.level or "") end)
 local idx_f = io.open(DOCS_BASE_DIR .. "/dungeon/README.md", "w")
 if idx_f then
-    idx_f:write("# 副本列表\n\n")
-    idx_f:write("| 副本名称 | 等级范围 | 链接 |\n")
-    idx_f:write("| :--- | :--- | :--- |\n")
-    for _, d in ipairs(dungeon_list) do
-        idx_f:write("| " .. d.name .. " | " .. (d.level or "??") .. " | [进入文档](" .. d.key .. ".md) |\n")
+    idx_f:write("# 副本列表\n\n| 副本名称 | 等级范围 | 链接 |\n| :--- | :--- | :--- |\n")
+    for _, d in ipairs(dungeon_list) do 
+        idx_f:write("| " .. d.name .. " | " .. (d.level or "??") .. " | [进入文档](" .. d.key .. ".md) |\n") 
     end
     idx_f:close()
 end
 
 print("Generating Quest files...")
 for id, q in pairs(all_quests) do
+    local q_title = clean_string(q.title)
     local f = io.open(DOCS_BASE_DIR .. "/quest/" .. id .. ".md", "w")
     if f then
-        f:write("# " .. clean_string(q.title) .. "\n\n")
+        f:write("# " .. q_title .. "\n\n")
         f:write("**任务等级:** " .. (q.level or "") .. "  \n")
         f:write("**起始等级:** " .. (q.attain or "") .. "  \n")
-        f:write("**开始地点:** " .. clean_string(q.location or "") .. "  \n\n")
-        f:write("## 任务目标\n" .. clean_string(q.aim or "无") .. "\n\n")
+        
+        -- Link NPC in location/aim
+        local loc_str = clean_string(q.location)
+        for name, n_id in pairs(npc_names_to_ids) do
+            local pat = escape_pattern(name)
+            loc_str = loc_str:gsub(pat, "["..name.."](../npc/"..n_id..".md)")
+        end
+        f:write("**开始地点:** " .. loc_str .. "  \n\n")
+        
+        local aim_str = clean_string(q.aim or "无")
+        for name, n_id in pairs(npc_names_to_ids) do
+            local pat = escape_pattern(name)
+            aim_str = aim_str:gsub(pat, "["..name.."](../npc/"..n_id..".md)")
+        end
+        f:write("## 任务目标\n" .. aim_str .. "\n\n")
+        
         if q.note then f:write("## 任务提示\n" .. clean_string(q.note) .. "\n\n") end
         if q.rewards and #q.rewards > 0 then
             f:write("## 任务奖励\n")
             for _, r in ipairs(q.rewards) do
-                if r.id ~= 0 then
-                    f:write("- [" .. clean_string(r.name) .. "](../item/" .. r.id .. ".md)\n")
-                end
+                if r.id ~= 0 then f:write("- [" .. clean_string(r.name) .. "](../item/" .. r.id .. ".md)\n") end
             end
         end
         f:close()
@@ -286,9 +395,7 @@ for id, i in pairs(items) do
     local f = io.open(DOCS_BASE_DIR .. "/item/" .. id .. ".md", "w")
     if f then
         f:write("# " .. clean_string(i.name) .. "\n\n")
-        f:write("**物品 ID:** " .. clean_string(id) .. "  \n")
-        f:write("**图标:** " .. clean_string(i.icon or "") .. "  \n\n")
-        f:write("## 获取途径\n")
+        f:write("**物品 ID:** " .. clean_string(id) .. "  \n**图标:** " .. clean_string(i.icon or "") .. "  \n\n## 获取途径\n")
         local rewarded_by = {}
         for _, q in pairs(all_quests) do
             if q.rewards then
@@ -299,9 +406,7 @@ for id, i in pairs(items) do
         end
         if #rewarded_by > 0 then
             f:write("### 任务奖励\n")
-            for _, q in ipairs(rewarded_by) do
-                f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n")
-            end
+            for _, q in ipairs(rewarded_by) do f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n") end
         end
         if #i.sources > 0 then
             f:write("### 掉落/来源\n")
