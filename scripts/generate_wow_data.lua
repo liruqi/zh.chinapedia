@@ -1,12 +1,17 @@
 -- WoW Data Generator v6
 -- Includes NPC/Boss support and integrated cross-linking
 
-local ADDONS_DIR = "D:/Games/TurtleWoW/Interface/AddOns"
-local DOCS_BASE_DIR = "D:/SRC/GitHub/liruqi/zh.chinapedia/docs/wow/turtle"
+local IS_WINDOWS = package.config:sub(1,1) == "\\"
+local ADDONS_DIR = IS_WINDOWS and "D:/Games/TurtleWoW/Interface/AddOns" or "/Users/server/Documents/Otari98"
+local DOCS_BASE_DIR = IS_WINDOWS and "D:/SRC/GitHub/liruqi/zh.chinapedia/docs/wow/turtle" or "/Users/server/Documents/zh.chinapedia/docs/wow/turtle"
 
 -- Ensure directories exist
 local function ensure_dir(path)
-    os.execute('mkdir "' .. path:gsub("/", "\\") .. '" 2>nul')
+    if IS_WINDOWS then
+        os.execute('mkdir "' .. path:gsub("/", "\\") .. '" 2>nul')
+    else
+        os.execute('mkdir -p "' .. path .. '"')
+    end
 end
 
 ensure_dir(DOCS_BASE_DIR .. "/quest")
@@ -140,6 +145,7 @@ local function clean_string(s)
     if type(s) == "table" then return "{table}" end
     if type(s) ~= "string" then return tostring(s or "") end
     s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("<", "&lt;"):gsub(">", "&gt;")
     return s:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
 end
 
