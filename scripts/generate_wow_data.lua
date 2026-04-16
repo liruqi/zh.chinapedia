@@ -18,6 +18,7 @@ ensure_dir(DOCS_BASE_DIR .. "/quest")
 ensure_dir(DOCS_BASE_DIR .. "/item")
 ensure_dir(DOCS_BASE_DIR .. "/dungeon")
 ensure_dir(DOCS_BASE_DIR .. "/npc")
+ensure_dir(DOCS_BASE_DIR .. "/set")
 
 -- Helper: Deep Merge
 local function deep_merge(target, source)
@@ -57,13 +58,22 @@ local AceLocales = {}
 _G.AceLibrary = function(name)
     if name:match("^AceLocale%-") then
         return {
-            new = function(self, addon_name)
-                if not AceLocales[addon_name] then
-                    AceLocales[addon_name] = create_babble_mock(addon_name)
+            new = function(self, name)
+            if not AceLocales[name] then
+                local mock = create_babble_mock(name)
+                mock.RegisterTranslations = function(m, lang, func)
+                    if lang == "zhCN" then
+                        local translations = func()
+                        for k, v in pairs(translations) do
+                            m[k] = v
+                        end
+                    end
                 end
-                return AceLocales[addon_name]
+                AceLocales[name] = mock
             end
-        }
+            return AceLocales[name]
+        end
+    }
     elseif name:match("^Babble%-") then
         return create_babble_mock(name)
     end
@@ -133,6 +143,9 @@ for _, file in ipairs(loot_files) do
     load_addon_file(ADDONS_DIR .. "/AtlasLoot/Database/" .. file)
 end
 
+print("Loading locales...")
+load_addon_file(ADDONS_DIR .. "/AtlasLoot/Locale/locale.cn.lua")
+
 print("Loading Atlas maps data...")
 load_addon_file(ADDONS_DIR .. "/Atlas/Locale/Atlas-enUS.lua")
 load_addon_file(ADDONS_DIR .. "/Atlas/Locale/Atlas-zhCN.lua")
@@ -142,7 +155,11 @@ load_addon_file(ADDONS_DIR .. "/Atlas/AtlasMaps.lua")
 -- DATA PROCESSING
 -- ==========================================
 local function clean_string(s)
-    if type(s) == "table" then return "{table}" end
+    if type(s) == "table" then
+        local res = ""
+        for _, v in ipairs(s) do res = res .. clean_string(v) end
+        return res
+    end
     if type(s) ~= "string" then return tostring(s or "") end
     s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     s = s:gsub("<", "&lt;"):gsub(">", "&gt;")
@@ -153,13 +170,29 @@ local function escape_pattern(s)
     return s:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
 end
 
+local set_tags = {}
+local function load_set_tags()
+    local path = ADDONS_DIR .. "/AtlasLoot/Core/TextParsing.lua"
+    local f = io.open(path, "r")
+    if not f then print("Warning: TextParsing.lua not found") return end
+    local content = f:read("*a")
+    f:close()
+    
+    local al_loot = AceLocales["AtlasLoot"] or create_babble_mock("AtlasLoot")
+    for tag, key in content:gmatch('%["#([^#]+)#"%]%s*=%s*AL%["([^"]+)"%]') do
+        set_tags[tag] = al_loot[key]
+    end
+    print("Loaded " .. (function() local c=0 for _ in pairs(set_tags) do c=c+1 end return c end)() .. " set tags")
+end
+load_set_tags()
+
 local translated_atlas = AceLocales["Atlas"] or {}
 
 -- Quests
 local all_quests = {}
 local function find_quests(tbl)
     if not tbl then return end
-    if tbl.id and tbl.title then all_quests[tostring(tbl.id)] = tbl return end
+    if tbl.id and type(tbl.id) ~= "table" and tbl.title then all_quests[tostring(tbl.id)] = tbl return end
     for k, v in pairs(tbl) do
         if type(v) == "table" and k ~= "rewards" then find_quests(v) end
     end
@@ -172,7 +205,24 @@ local function collect_items(tbl, source_name)
     if type(tbl) ~= "table" then return end
     for i, entry in ipairs(tbl) do
         if type(entry) == "table" and entry[1] and entry[1] ~= 0 then
-            local i_id = tostring(entry[1])
+            local i_id = ""
+            if type(entry[1]) == "table" then
+                local raw_name = clean_string(entry[3])
+                local sid = nil
+                for tag in raw_name:gmatch("#([^#]+)#") do
+                    if not tag:match("^[as]%d+$") and not tag:match("^h%d+$") and not tag:match("^w%d+$") then
+                        sid = tag
+                        break
+                    end
+                end
+                sid = sid or raw_name:match("#([^#]+)#")
+                
+                local sid_lower = sid and sid:lower() or "unknown"
+                i_id = "set/" .. sid_lower
+            else
+                i_id = tostring(entry[1])
+            end
+            
             local i_name = clean_string(entry[3])
             if not items[i_id] then
                 items[i_id] = {id=i_id, name=i_name, icon=entry[2], sources={}, quality=1}
@@ -194,8 +244,8 @@ end
 for _, q in pairs(all_quests) do
     if q.rewards then
         for _, r in ipairs(q.rewards) do
-            local i_id = tostring(r.id)
-            if i_id ~= "0" and not items[i_id] then
+            local i_id = (r.id and type(r.id) ~= "table") and tostring(r.id) or nil
+            if i_id and i_id ~= "0" and not items[i_id] then
                 items[i_id] = {id=i_id, name=clean_string(r.name), icon=r.icon, sources={}, quality=r.quality or 1}
             end
         end
@@ -212,7 +262,7 @@ for mapKey, pois in pairs(AtlasMaps) do
     if type(pois) == "table" and pois.ZoneName then
         local dungeon_name = clean_string(translated_atlas[pois.ZoneName[1]] or pois.ZoneName[1])
         for i, poi in ipairs(pois) do
-            if type(poi) == "table" and poi[2] == 2 and poi[3] then -- NPC type
+            if type(poi) == "table" and poi[2] == 2 and poi[3] and type(poi[3]) ~= "table" then -- NPC type
                 local id = tostring(poi[3])
                 local name = clean_string(poi[1]):gsub("^%d+%)%s+", "") -- Remove "1) " prefix
                 if id ~= "-1" then
@@ -321,10 +371,34 @@ for mapKey, data in pairs(AtlasMaps) do
             for i, poi in ipairs(data) do
                 if type(poi) == "table" and poi[1] then
                     local name = clean_string(poi[1]):gsub("^%d+%)%s+", "")
-                    local id = tostring(poi[3] or "")
+                    local id = ""
+                    if poi[3] then
+                        if type(poi[3]) == "table" then
+                            local raw_label = clean_string(poi[1])
+                            local sid = nil
+                            for tag in raw_label:gmatch("#([^#]+)#") do
+                                if not tag:match("^[as]%d+$") then
+                                    sid = tag
+                                    break
+                                end
+                            end
+                            sid = sid or raw_label:match("#([^#]+)#")
+                            
+                            id = "../set/" .. (sid and sid:lower() or "unknown")
+                        else
+                            id = tostring(poi[3])
+                        end
+                    end
+
                     f:write("- ")
-                    if poi[2] == 2 and id ~= "" and id ~= "-1" then
-                        f:write("[" .. clean_string(poi[1]) .. "](../npc/" .. id .. ".md)")
+                    if id ~= "" and id ~= "-1" then
+                        if id:find("^%.%.%/outfit%/") then
+                            f:write("[" .. clean_string(poi[1]) .. "](" .. id .. ".md)")
+                        elseif poi[2] == 2 then
+                            f:write("[" .. clean_string(poi[1]) .. "](../npc/" .. id .. ".md)")
+                        else
+                            f:write(clean_string(poi[1]))
+                        end
                     else
                         f:write(clean_string(poi[1]))
                     end
@@ -421,5 +495,63 @@ for id, i in pairs(items) do
         f:close()
     end
 end
+
+print("Generating Set files...")
+local set_registry = AtlasLoot_Data["AtlasLootSetItems"] or {}
+local set_count = 0
+for key, data in pairs(set_registry) do
+    local sid = key:lower()
+    local name = key
+    local items_in_set = {}
+    
+    local function scan_set(tbl)
+        if type(tbl) ~= "table" then return end
+        for i, entry in ipairs(tbl) do
+            if type(entry) == "number" and entry ~= 0 then
+                table.insert(items_in_set, entry)
+            elseif type(entry) == "table" then
+                if type(entry[1]) == "number" and entry[1] ~= 0 then
+                    table.insert(items_in_set, entry[1])
+                    if entry[3] and type(entry[3]) == "string" then
+                        for tag in entry[3]:gmatch("#([^#]+)#") do
+                            if set_tags[tag] and not tag:match("^[as]%d+$") then
+                                name = set_tags[tag]
+                                break
+                            end
+                        end
+                    end
+                else
+                    scan_set(entry)
+                end
+                
+                if entry[1] == 0 and entry[3] and type(entry[3]) == "string" then
+                    local tag = entry[3]:match("#([^#]+)#")
+                    if tag and set_tags[tag] then name = set_tags[tag] end
+                end
+            end
+        end
+    end
+    scan_set(data)
+    
+    if #items_in_set > 0 then
+        local of = io.open(DOCS_BASE_DIR .. "/set/" .. sid .. ".md", "w")
+        if of then
+            of:write("# " .. name .. "\n\n")
+            of:write("## 包含物品\n")
+            local unique_items = {}
+            for _, item_id in ipairs(items_in_set) do
+                if not unique_items[item_id] then
+                    of:write("- [" .. item_id .. "](../item/" .. item_id .. ".md)\n")
+                    unique_items[item_id] = true
+                end
+            end
+            of:close()
+            set_count = set_count + 1
+        end
+    else
+        print("Skipping set " .. key .. " (no items found)")
+    end
+end
+print("Generated " .. set_count .. " set files.")
 
 print("Done.")
