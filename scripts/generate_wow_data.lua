@@ -470,32 +470,7 @@ for id, q in pairs(all_quests) do
     end
 end
 
-print("Generating Item files...")
-for id, i in pairs(items) do
-    local f = io.open(DOCS_BASE_DIR .. "/item/" .. id .. ".md", "w")
-    if f then
-        f:write("# " .. clean_string(i.name) .. "\n\n")
-        f:write("**物品 ID:** " .. clean_string(id) .. "  \n**图标:** " .. clean_string(i.icon or "") .. "  \n\n## 获取途径\n")
-        local rewarded_by = {}
-        for _, q in pairs(all_quests) do
-            if q.rewards then
-                for _, r in ipairs(q.rewards) do
-                    if tostring(r.id) == id then table.insert(rewarded_by, q) break end
-                end
-            end
-        end
-        if #rewarded_by > 0 then
-            f:write("### 任务奖励\n")
-            for _, q in ipairs(rewarded_by) do f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n") end
-        end
-        if #i.sources > 0 then
-            f:write("### 掉落/来源\n")
-            for _, src in ipairs(i.sources) do f:write("- " .. src .. "\n") end
-        end
-        f:close()
-    end
-end
-
+local item_to_sets = {}
 print("Generating Set files...")
 local set_registry = AtlasLoot_Data["AtlasLootSetItems"] or {}
 local set_count = 0
@@ -534,22 +509,62 @@ for key, data in pairs(set_registry) do
     scan_set(data)
     
     if #items_in_set > 0 then
+        local unique_items = {}
+        for _, item_id in ipairs(items_in_set) do
+            if not unique_items[item_id] then
+                unique_items[item_id] = true
+                -- Add to global mapping for backward links
+                if not item_to_sets[tostring(item_id)] then item_to_sets[tostring(item_id)] = {} end
+                table.insert(item_to_sets[tostring(item_id)], { sid = sid, name = name })
+            end
+        end
+
         local of = io.open(DOCS_BASE_DIR .. "/set/" .. sid .. ".md", "w")
         if of then
             of:write("# " .. name .. "\n\n")
             of:write("## 包含物品\n")
-            local unique_items = {}
-            for _, item_id in ipairs(items_in_set) do
-                if not unique_items[item_id] then
-                    of:write("- [" .. item_id .. "](../item/" .. item_id .. ".md)\n")
-                    unique_items[item_id] = true
-                end
+            for item_id, _ in pairs(unique_items) do
+                of:write("- [" .. item_id .. "](../item/" .. item_id .. ".md)\n")
             end
             of:close()
             set_count = set_count + 1
         end
-    else
-        print("Skipping set " .. key .. " (no items found)")
+    end
+end
+print("Generated " .. set_count .. " set files.")
+
+print("Generating Item files...")
+for id, i in pairs(items) do
+    local f = io.open(DOCS_BASE_DIR .. "/item/" .. id .. ".md", "w")
+    if f then
+        f:write("# " .. clean_string(i.name) .. "\n\n")
+        f:write("**物品 ID:** " .. clean_string(id) .. "  \n**图标:** " .. clean_string(i.icon or "") .. "  \n\n## 获取途径\n")
+        local rewarded_by = {}
+        for _, q in pairs(all_quests) do
+            if q.rewards then
+                for _, r in ipairs(q.rewards) do
+                    if tostring(r.id) == id then table.insert(rewarded_by, q) break end
+                end
+            end
+        end
+        if #rewarded_by > 0 then
+            f:write("### 任务奖励\n")
+            for _, q in ipairs(rewarded_by) do f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n") end
+        end
+        if #i.sources > 0 then
+            f:write("### 掉落/来源\n")
+            for _, src in ipairs(i.sources) do f:write("- " .. src .. "\n") end
+        end
+
+        -- Backward links to sets
+        if item_to_sets[id] then
+            f:write("\n## 属于套装\n")
+            for _, s in ipairs(item_to_sets[id]) do
+                f:write("- [" .. s.name .. "](../set/" .. s.sid .. ".md)\n")
+            end
+        end
+        
+        f:close()
     end
 end
 print("Generated " .. set_count .. " set files.")
