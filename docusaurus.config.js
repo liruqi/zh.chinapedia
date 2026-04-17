@@ -49,8 +49,14 @@ const config = {
           routeBasePath: 'wiki',
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/liruqi/zh.chinapedia/tree/main/',
+          editUrl: ({ docPath }) => {
+            if (docPath.startsWith('wow/turtle/')) {
+              return `https://github.com/liruqi/wuguifu/edit/master/${docPath.substring(
+                'wow/turtle/'.length,
+              )}`;
+            }
+            return `https://github.com/liruqi/zh.chinapedia/edit/main/docs/${docPath}`;
+          },
         },
         blog: {
           showReadingTime: true,
@@ -60,8 +66,7 @@ const config = {
           },
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/liruqi/zh.chinapedia/tree/main/',
+          editUrl: 'https://github.com/liruqi/zh.chinapedia/edit/main/blog/',
           // Useful options to enforce blogging best practices
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
