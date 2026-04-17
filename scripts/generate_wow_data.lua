@@ -1,7 +1,8 @@
+-- D:\Games\rilua-0.1.21-x86_64-pc-windows-msvc\rilua.exe scripts\generate_wow_data.lua
 -- WoW Data Generator v6
 -- Includes NPC/Boss support and integrated cross-linking
 
-local IS_WINDOWS = package.config:sub(1,1) == "\\"
+local IS_WINDOWS = package.config:sub(1,1) == "\\" or os.getenv("OS") == "Windows_NT"
 local ADDONS_DIR = IS_WINDOWS and "D:/Games/TurtleWoW/Interface/AddOns" or "/Users/server/Documents/Otari98"
 local DOCS_BASE_DIR = IS_WINDOWS and "D:/SRC/GitHub/liruqi/zh.chinapedia/docs/wow/turtle" or "/Users/server/Documents/zh.chinapedia/docs/wow/turtle"
 
@@ -174,6 +175,10 @@ local set_tags = {}
 local function load_set_tags()
     local path = ADDONS_DIR .. "/AtlasLoot/Core/TextParsing.lua"
     local f = io.open(path, "r")
+    if not f then
+        path = path:gsub("/", "\\")
+        f = io.open(path, "r")
+    end
     if not f then print("Warning: TextParsing.lua not found") return end
     local content = f:read("*a")
     f:close()
@@ -182,9 +187,35 @@ local function load_set_tags()
     for tag, key in content:gmatch('%["#([^#]+)#"%]%s*=%s*AL%["([^"]+)"%]') do
         set_tags[tag] = al_loot[key]
     end
+    -- Also capture colors and other tags
+    for tag, val in content:gmatch('%["([^"]+)"%]%s*=%s*"([^"]+)"') do
+        if tag:find("^=") or tag:find("^#") then
+            set_tags[tag:gsub("^#", "")] = val
+        end
+    end
     print("Loaded " .. (function() local c=0 for _ in pairs(set_tags) do c=c+1 end return c end)() .. " set tags")
 end
 load_set_tags()
+
+local function translate_tags(s)
+    if not s or s == "" then return "" end
+    if type(s) == "table" then
+        local res = ""
+        for _, v in ipairs(s) do res = res .. translate_tags(v) .. " " end
+        return res:gsub("%s+$", "")
+    end
+    if type(s) ~= "string" then s = tostring(s) end
+    
+    -- Translate known tags
+    s = s:gsub("#([^#]+)#", function(tag)
+        return set_tags[tag] or tag
+    end)
+    
+    -- Strip quality markers =qN=, metadata markers like =ds=, =mN=, =cNN=, etc.
+    s = s:gsub("=%l%d*=", ""):gsub("=%w%w%d*=", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    return s
+end
 
 local translated_atlas = AceLocales["Atlas"] or {}
 
@@ -224,12 +255,13 @@ local function collect_items(tbl, source_name)
             end
             
             local i_name = clean_string(entry[3])
+            local i_extra = translate_tags(entry[4])
             if not items[i_id] then
-                items[i_id] = {id=i_id, name=i_name, icon=entry[2], sources={}, quality=1}
+                items[i_id] = {id=i_id, name=i_name, icon=entry[2], sources={}, quality=1, extra = i_extra}
                 local q = i_name:match("^=q(%d)=")
                 if q then items[i_id].quality = q items[i_id].name = i_name:gsub("^=q%d=", "") end
             end
-            table.insert(items[i_id].sources, source_name)
+            table.insert(items[i_id].sources, source_name .. (i_extra ~= "" and " (" .. i_extra .. ")" or ""))
         end
     end
 end
@@ -274,29 +306,62 @@ for mapKey, pois in pairs(AtlasMaps) do
                     
                     -- Link Loot
                     local loot_labels = AtlasLootBossButtons[mapKey]
+                    if not loot_labels then
+                        for k, v in pairs(AtlasLootBossButtons) do
+                            if k:lower() == mapKey:lower() then
+                                loot_labels = v
+                                break
+                            end
+                        end
+                    end
+
                     if loot_labels and loot_labels[i] and loot_labels[i] ~= "" then
                         local loot_label = loot_labels[i]
                         local loot_table = nil
-                        -- Try finding the loot table in DUNGEONS category first
+                        
+                        -- Search priority: DUNGEONS, specific mapKey, global _G, other categories
                         if AtlasLoot_Data["DUNGEONS"] and AtlasLoot_Data["DUNGEONS"][mapKey] then
                             loot_table = AtlasLoot_Data["DUNGEONS"][mapKey][loot_label]
                         end
-                        -- Fallback to searching all top categories
+                        if not loot_table and AtlasLoot_Data["DUNGEONS"] then
+                            loot_table = AtlasLoot_Data["DUNGEONS"][loot_label]
+                        end
                         if not loot_table then
                             for cat, maps in pairs(AtlasLoot_Data) do
                                 if maps[mapKey] and maps[mapKey][loot_label] then
                                     loot_table = maps[mapKey][loot_label]
                                     break
                                 end
-                            end
-                        end
-                        
-                        if loot_table then
-                            for _, loot_entry in ipairs(loot_table) do
-                                if type(loot_entry) == "table" and loot_entry[1] and loot_entry[1] ~= 0 then
-                                    table.insert(npcs[id].drops, {id=tostring(loot_entry[1]), name=clean_string(loot_entry[3])})
+                                if maps[loot_label] then
+                                    loot_table = maps[loot_label]
+                                    break
                                 end
                             end
+                        end
+                        if not loot_table and _G[loot_label] then
+                            loot_table = _G[loot_label]
+                        end
+
+                        if loot_table and type(loot_table) == "table" then
+                            -- Some loot tables are nested: { { item1 }, { item2 } }
+                            -- Others are double nested: { { { item1 } } } (rare)
+                            local function process_loot(tbl)
+                                for _, loot_entry in ipairs(tbl) do
+                                    if type(loot_entry) == "table" then
+                                        if loot_entry[1] and type(loot_entry[1]) == "number" and loot_entry[1] ~= 0 then
+                                            local d_name = clean_string(loot_entry[3]):gsub("^=q%d=", "")
+                                            table.insert(npcs[id].drops, {
+                                                id=tostring(loot_entry[1]), 
+                                                name=d_name,
+                                                extra=translate_tags(loot_entry[4])
+                                            })
+                                        else
+                                            process_loot(loot_entry)
+                                        end
+                                    end
+                                end
+                            end
+                            process_loot(loot_table)
                         end
                     end
                 end
@@ -335,10 +400,10 @@ for id, npc in pairs(npcs) do
         
         if #npc.drops > 0 then
             f:write("## 装备掉落\n")
-            f:write("| 物品 | ID |\n")
-            f:write("| :--- | :--- |\n")
+            f:write("| 物品 | ID | 说明 |\n")
+            f:write("| :--- | :--- | :--- |\n")
             for _, drop in ipairs(npc.drops) do
-                f:write("| [" .. drop.name .. "](../item/" .. drop.id .. ".md) | " .. drop.id .. " |\n")
+                f:write("| [" .. drop.name .. "](../item/" .. drop.id .. ".md) | " .. drop.id .. " | " .. drop.extra .. " |\n")
             end
             f:write("\n")
         end
