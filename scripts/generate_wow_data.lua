@@ -259,7 +259,7 @@ local npcs = {}
 local npc_names_to_ids = {}
 
 for mapKey, pois in pairs(AtlasMaps) do
-    if type(pois) == "table" and pois.ZoneName then
+    if type(pois) == "table" and pois.ZoneName and pois.LevelRange and pois.PlayerLimit then
         local dungeon_name = clean_string(translated_atlas[pois.ZoneName[1]] or pois.ZoneName[1])
         for i, poi in ipairs(pois) do
             if type(poi) == "table" and poi[2] == 2 and poi[3] and type(poi[3]) ~= "table" then -- NPC type
@@ -357,7 +357,7 @@ end
 print("Generating Dungeon files...")
 local dungeon_list = {}
 for mapKey, data in pairs(AtlasMaps) do
-    if type(data) == "table" and data.ZoneName then
+    if type(data) == "table" and data.ZoneName and data.LevelRange and data.PlayerLimit then
         local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
         table.insert(dungeon_list, {key=mapKey, name=d_name, level=data.LevelRange})
         local f = io.open(DOCS_BASE_DIR .. "/dungeon/" .. mapKey .. ".md", "w")
