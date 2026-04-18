@@ -19,6 +19,8 @@ local L = {
         RELATED_QUESTS = "相关任务",
         DUNGEON_LIST = "副本列表",
         DUNGEON_NAME = "副本名称",
+        DUNGEON_TYPE = "类型",
+        DUNGEON_ZONE = "区域",
         LEVEL_RANGE = "等级范围",
         LINK = "链接",
         ENTER_DOCS = "进入文档",
@@ -56,6 +58,8 @@ local L = {
         RELATED_QUESTS = "Related Quests",
         DUNGEON_LIST = "Dungeon List",
         DUNGEON_NAME = "Dungeon Name",
+        DUNGEON_TYPE = "Type",
+        DUNGEON_ZONE = "Zone",
         LEVEL_RANGE = "Level Range",
         LINK = "Link",
         ENTER_DOCS = "Enter Docs",
@@ -109,8 +113,79 @@ end
 ensure_dir(DOCS_BASE_DIR .. "/quest")
 ensure_dir(DOCS_BASE_DIR .. "/item")
 ensure_dir(DOCS_BASE_DIR .. "/dungeon")
+ensure_dir(DOCS_BASE_DIR .. "/worldboss")
+ensure_dir(DOCS_BASE_DIR .. "/transport")
 ensure_dir(DOCS_BASE_DIR .. "/npc")
 ensure_dir(DOCS_BASE_DIR .. "/set")
+
+-- ==========================================
+-- CATEGORY CLASSIFICATION
+-- ==========================================
+local EASTERN_DUNGEONS = {
+    FrostmaneHollow=true, BlackrockDepths=true, BlackrockSpireLower=true, BlackrockSpireUpper=true,
+    BlackwingLair=true, DragonmawRetreat=true, Gnomeregan=true, GilneasCity=true,
+    HateforgeQuarry=true, KarazhanCrypt=true, LowerKara=true, UpperKara=true,
+    MoltenCore=true, Naxxramas=true, Scholomance=true, ShadowfangKeep=true,
+    SMArmory=true, SMCathedral=true, SMGraveyard=true, SMLibrary=true,
+    Stratholme=true, StormwindVault=true, StormwroughtRuins=true,
+    TheDeadmines=true, TheStockade=true, TheSunkenTemple=true, Uldaman=true, ZulGurub=true
+}
+local KALIMDOR_DUNGEONS = {
+    TimbermawHold=true, WindhornCanyon=true, BlackfathomDeeps=true,
+    CavernsOfTimeBlackMorass=true, TheCrescentGrove=true,
+    DireMaulEast=true, DireMaulNorth=true, DireMaulWest=true, EmeraldSanctum=true,
+    Maraudon=true, OnyxiasLair=true, RagefireChasm=true, RazorfenDowns=true,
+    RazorfenKraul=true, TheRuinsofAhnQiraj=true, TheTempleofAhnQiraj=true,
+    WailingCaverns=true, ZulFarrak=true
+}
+local WORLD_BOSSES = {
+    Azuregos=true, FourDragons=true, LordKazzak=true, Nerubian=true,
+    Reaver=true, Ostarius=true, Concavius=true, CowKing=true, Clackora=true
+}
+local TRANSPORT_MAPS = {
+    FPAllianceEast=true, FPAllianceWest=true, FPHordeEast=true, FPHordeWest=true,
+    TransportRoutes=true
+}
+local DUNGEON_LOCATIONS = { DLEast=true, DLWest=true }
+
+-- Entrance image -> parent dungeon(s) mapping
+local ENT_MAP = {
+    BlackfathomDeeps    = "BlackfathomDeepsEnt",
+    BlackrockDepths     = "BlackrockMountainEnt",
+    BlackrockSpireLower = "BlackrockMountainEnt",
+    BlackrockSpireUpper = "BlackrockMountainEnt",
+    BlackwingLair       = "BlackrockMountainEnt",
+    MoltenCore          = "BlackrockMountainEnt",
+    DireMaulEast        = "DireMaulEnt",
+    DireMaulNorth       = "DireMaulEnt",
+    DireMaulWest        = "DireMaulEnt",
+    Gnomeregan          = "GnomereganEnt",
+    Maraudon            = "MaraudonEnt",
+    SMArmory            = "SMEnt",
+    SMCathedral         = "SMEnt",
+    SMGraveyard         = "SMEnt",
+    SMLibrary           = "SMEnt",
+    TheDeadmines        = "TheDeadminesEnt",
+    TheSunkenTemple     = "TheSunkenTempleEnt",
+    Uldaman             = "UldamanEnt",
+    WailingCaverns      = "WailingCavernsEnt",
+}
+
+-- Returns the output subdirectory for a mapKey, or nil to skip standalone page
+local function get_output_subdir(mapKey)
+    if WORLD_BOSSES[mapKey]   then return "worldboss"
+    elseif TRANSPORT_MAPS[mapKey] then return "transport"
+    elseif DUNGEON_LOCATIONS[mapKey] then return nil  -- handled in README
+    else return "dungeon"   -- Eastern, Kalimdor, BGS, etc.
+    end
+end
+
+-- Returns the relative path from /npc/ to a dungeon/worldboss/transport page
+local function get_npc_rel_link(mapKey)
+    local sub = get_output_subdir(mapKey)
+    if sub then return "../" .. sub .. "/" .. mapKey .. ".md" end
+    return "../dungeon/README.md"
+end
 
 -- Helper: Deep Merge
 local function deep_merge(target, source)
@@ -542,7 +617,7 @@ for id, npc in pairs(npcs) do
         f:write("**" .. T.NPC_ID .. "** " .. id .. "  \n")
         f:write("**" .. T.LOCATIONS .. "**\n")
         for _, loc in ipairs(npc.locations) do
-            f:write("- [" .. loc.dungeonName .. "](../dungeon/" .. loc.mapKey .. ".md)\n")
+            f:write("- [" .. loc.dungeonName .. "](" .. get_npc_rel_link(loc.mapKey) .. ")\n")
         end
         f:write("\n")
         
@@ -569,14 +644,35 @@ end
 
 print(T.GENERATING_DUNGEON)
 local dungeon_list = {}
+local eastern_list = {}
+local kalimdor_list = {}
+
 for mapKey, data in pairs(AtlasMaps) do
     if type(data) == "table" and data.ZoneName and data.LevelRange and data.PlayerLimit then
-        local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
-        table.insert(dungeon_list, {key=mapKey, name=d_name, level=data.LevelRange})
-        local f = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/" .. mapKey .. ".md")
+        local subdir = get_output_subdir(mapKey)
+        if subdir == nil then
+            -- DLEast / DLWest: skip standalone page generation
+            goto continue_dungeon
+        end
+        local d_name  = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
+        local d_loc   = clean_string(translated_atlas[data.Location and data.Location[1]] or (data.Location and data.Location[1]) or "")
+        local d_limit = clean_string(data.PlayerLimit or "?")
+        local entry = {key=mapKey, name=d_name, level=data.LevelRange, location=d_loc, playerLimit=d_limit}
+        table.insert(dungeon_list, entry)
+        if EASTERN_DUNGEONS[mapKey] then
+            table.insert(eastern_list, entry)
+        elseif KALIMDOR_DUNGEONS[mapKey] then
+            table.insert(kalimdor_list, entry)
+        end
+
+        local f = open_file_with_dir(DOCS_BASE_DIR .. "/" .. subdir .. "/" .. mapKey .. ".md")
         if f then
             f:write("# " .. d_name .. "\n\n")
             f:write("![" .. d_name .. "](" .. mapKey .. ".png)\n\n")
+            -- Entrance image (only for dungeons, not worldboss/transport)
+            if subdir == "dungeon" and ENT_MAP[mapKey] then
+                f:write("![" .. d_name .. " 入口](" .. ENT_MAP[mapKey] .. ".png)\n\n")
+            end
             f:write("**" .. T.LOCATION .. "** " .. clean_string(translated_atlas[data.Location[1]] or data.Location[1]) .. "  \n")
             f:write("**" .. T.SUITABLE_LEVEL .. "** " .. clean_string(data.LevelRange or "??") .. " (" .. clean_string(data.MinLevel or "??") .. "+)  \n")
             f:write("**" .. T.PLAYER_LIMIT .. "** " .. clean_string(data.PlayerLimit or "??") .. T.PLAYERS .. "  \n\n")
@@ -596,7 +692,6 @@ for mapKey, data in pairs(AtlasMaps) do
                                 end
                             end
                             sid = sid or raw_label:match("#([^#]+)#")
-                            
                             id = "../set/" .. (sid and sid:lower() or "unknown")
                         else
                             id = tostring(poi[3])
@@ -618,7 +713,7 @@ for mapKey, data in pairs(AtlasMaps) do
                     f:write("\n")
                 end
             end
-            
+
             local q_idx = AtlasQuest.AtlasMapToDungeon[mapKey]
             if q_idx and AtlasQuest.data[q_idx] then
                 f:write("\n## " .. T.RELATED_QUESTS .. "\n")
@@ -634,18 +729,115 @@ for mapKey, data in pairs(AtlasMaps) do
             end
             f:close()
         end
+        ::continue_dungeon::
     end
 end
 
--- Dungeon README
-table.sort(dungeon_list, function(a, b) return (a.level or "") < (b.level or "") end)
+-- ==========================================
+-- DUNGEON README (by region) + _category_.json
+-- ==========================================
+local function sort_by_level(list)
+    table.sort(list, function(a, b)
+        local la = (a.level or ""):match("^%d+") or "0"
+        local lb = (b.level or ""):match("^%d+") or "0"
+        return tonumber(la) < tonumber(lb)
+    end)
+end
+sort_by_level(eastern_list)
+sort_by_level(kalimdor_list)
+
+-- Read DLEast and DLWest names from AtlasMaps for README headings
+local dleast_name  = "东部王国副本分布"
+local dlwest_name  = "卡利姆多副本分布"
+if AtlasMaps["DLEast"] and AtlasMaps["DLEast"].ZoneName then
+    dleast_name = clean_string(translated_atlas[AtlasMaps["DLEast"].ZoneName[1]] or AtlasMaps["DLEast"].ZoneName[1])
+end
+if AtlasMaps["DLWest"] and AtlasMaps["DLWest"].ZoneName then
+    dlwest_name = clean_string(translated_atlas[AtlasMaps["DLWest"].ZoneName[1]] or AtlasMaps["DLWest"].ZoneName[1])
+end
+
+-- Helper: format player limit as type label
+local function fmt_type(limit)
+    local n = tonumber(limit) or 0
+    if n >= 20 then return n .. "人团本"
+    else return n .. "人" end
+end
+
 local idx_f = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/README.md")
 if idx_f then
-    idx_f:write("# " .. T.DUNGEON_LIST .. "\n\n| " .. T.DUNGEON_NAME .. " | " .. T.LEVEL_RANGE .. " | " .. T.LINK .. " |\n| :--- | :--- | :--- |\n")
-    for _, d in ipairs(dungeon_list) do 
-        idx_f:write("| " .. d.name .. " | " .. (d.level or "??") .. " | [" .. T.ENTER_DOCS .. "](" .. d.key .. ".md) |\n") 
+    idx_f:write("# " .. T.DUNGEON_LIST .. "\n\n")
+    -- DLEast map + Eastern table
+    idx_f:write("## " .. dleast_name .. "\n\n")
+    idx_f:write("![" .. dleast_name .. "](DLEast.png)\n\n")
+    idx_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :--- | :---: | :--- | :---: |\n")
+    for _, d in ipairs(eastern_list) do
+        idx_f:write("| [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d.playerLimit) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
     end
+    idx_f:write("\n")
+    -- DLWest map + Kalimdor table
+    idx_f:write("## " .. dlwest_name .. "\n\n")
+    idx_f:write("![" .. dlwest_name .. "](DLWest.png)\n\n")
+    idx_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :--- | :---: | :--- | :---: |\n")
+    for _, d in ipairs(kalimdor_list) do
+        idx_f:write("| [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d.playerLimit) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
+    end
+    idx_f:write("\n")
     idx_f:close()
+end
+
+-- dungeon _category_.json
+local cat_d = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/_category_.json")
+if cat_d then
+    cat_d:write('{\n  "label": "副本地图",\n  "position": 1\n}\n')
+    cat_d:close()
+end
+
+-- worldboss README + _category_.json
+local wb_list = {}
+for mapKey, data in pairs(AtlasMaps) do
+    if WORLD_BOSSES[mapKey] and type(data) == "table" and data.ZoneName then
+        local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
+        table.insert(wb_list, {key=mapKey, name=d_name, level=data.LevelRange})
+    end
+end
+table.sort(wb_list, function(a, b) return a.name < b.name end)
+local wb_f = open_file_with_dir(DOCS_BASE_DIR .. "/worldboss/README.md")
+if wb_f then
+    wb_f:write("# 世界首领\n\n")
+    wb_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.LEVEL_RANGE .. " | " .. T.LINK .. " |\n| :--- | :--- | :--- |\n")
+    for _, d in ipairs(wb_list) do
+        wb_f:write("| " .. d.name .. " | " .. (d.level or "??") .. " | [" .. T.ENTER_DOCS .. "](" .. d.key .. ".md) |\n")
+    end
+    wb_f:close()
+end
+local cat_wb = open_file_with_dir(DOCS_BASE_DIR .. "/worldboss/_category_.json")
+if cat_wb then
+    cat_wb:write('{\n  "label": "世界首领",\n  "position": 2\n}\n')
+    cat_wb:close()
+end
+
+-- transport README + _category_.json
+local tr_list = {}
+for mapKey, data in pairs(AtlasMaps) do
+    if TRANSPORT_MAPS[mapKey] and type(data) == "table" and data.ZoneName then
+        local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
+        table.insert(tr_list, {key=mapKey, name=d_name, level=data.LevelRange})
+    end
+end
+table.sort(tr_list, function(a, b) return a.name < b.name end)
+local tr_f = open_file_with_dir(DOCS_BASE_DIR .. "/transport/README.md")
+if tr_f then
+    tr_f:write("# 交通路线\n\n")
+    tr_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.LINK .. " |\n| :--- | :--- |\n")
+    for _, d in ipairs(tr_list) do
+        tr_f:write("| " .. d.name .. " | [" .. T.ENTER_DOCS .. "](" .. d.key .. ".md) |\n")
+    end
+    tr_f:close()
+end
+local cat_tr = open_file_with_dir(DOCS_BASE_DIR .. "/transport/_category_.json")
+if cat_tr then
+    cat_tr:write('{\n  "label": "交通路线",\n  "position": 3\n}\n')
+    cat_tr:close()
 end
 
 print(T.GENERATING_QUEST)
