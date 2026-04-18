@@ -788,7 +788,7 @@ end
 -- dungeon _category_.json
 local cat_d = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/_category_.json")
 if cat_d then
-    cat_d:write('{\n  "label": "副本地图",\n  "position": 1\n}\n')
+    cat_d:write('{\n  "label": "副本",\n  "position": 1\n}\n')
     cat_d:close()
 end
 

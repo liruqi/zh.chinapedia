@@ -1,8 +1,8 @@
 {
-  "label": "魔兽世界",
+  "label": "乌龟服",
   "link": {
     "type": "generated-index",
     "slug": "wow",
-    "description": "魔兽世界相关内容，包括副本、任务、NPC 等资料。"
+    "description": "魔兽世界乌龟服相关内容，包括副本、任务、NPC 等资料。"
   }
 }
