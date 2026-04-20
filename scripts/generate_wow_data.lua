@@ -21,6 +21,7 @@ local L = {
         DUNGEON_NAME = "副本名称",
         DUNGEON_TYPE = "类型",
         DUNGEON_ZONE = "区域",
+        DUNGEON_MAP_NUM = "编号",
         LEVEL_RANGE = "等级范围",
         LINK = "链接",
         ENTER_DOCS = "进入文档",
@@ -60,6 +61,7 @@ local L = {
         DUNGEON_NAME = "Dungeon Name",
         DUNGEON_TYPE = "Type",
         DUNGEON_ZONE = "Zone",
+        DUNGEON_MAP_NUM = "No.",
         LEVEL_RANGE = "Level Range",
         LINK = "Link",
         ENTER_DOCS = "Enter Docs",
@@ -128,7 +130,8 @@ local EASTERN_DUNGEONS = {
     MoltenCore=true, Naxxramas=true, Scholomance=true, ShadowfangKeep=true,
     SMArmory=true, SMCathedral=true, SMGraveyard=true, SMLibrary=true,
     Stratholme=true, StormwindVault=true, StormwroughtRuins=true,
-    TheDeadmines=true, TheStockade=true, TheSunkenTemple=true, Uldaman=true, ZulGurub=true
+    TheDeadmines=true, TheStockade=true, TheSunkenTemple=true, Uldaman=true, ZulGurub=true,
+    AlteracValleyNorth=true, AlteracValleySouth=true, ArathiBasin=true
 }
 local KALIMDOR_DUNGEONS = {
     TimbermawHold=true, WindhornCanyon=true, BlackfathomDeeps=true,
@@ -136,7 +139,7 @@ local KALIMDOR_DUNGEONS = {
     DireMaulEast=true, DireMaulNorth=true, DireMaulWest=true, EmeraldSanctum=true,
     Maraudon=true, OnyxiasLair=true, RagefireChasm=true, RazorfenDowns=true,
     RazorfenKraul=true, TheRuinsofAhnQiraj=true, TheTempleofAhnQiraj=true,
-    WailingCaverns=true, ZulFarrak=true
+    WailingCaverns=true, ZulFarrak=true, WarsongGulch=true
 }
 local WORLD_BOSSES = {
     Azuregos=true, FourDragons=true, LordKazzak=true, Nerubian=true,
@@ -147,6 +150,24 @@ local TRANSPORT_MAPS = {
     TransportRoutes=true
 }
 local DUNGEON_LOCATIONS = { DLEast=true, DLWest=true }
+
+local MAP_NUMBERS = {
+    AlteracValleyNorth="A", AlteracValleySouth="A", ArathiBasin="B",
+    SMArmory="1", SMCathedral="1", SMGraveyard="1", SMLibrary="1",
+    Stratholme="2", Naxxramas="3", Scholomance="4", ShadowfangKeep="5",
+    GilneasCity="6", DragonmawRetreat="7", Gnomeregan="8", Uldaman="9",
+    BlackrockDepths="10", BlackrockSpireLower="10", BlackrockSpireUpper="10", BlackwingLair="10", MoltenCore="10",
+    HateforgeQuarry="11", TheStockade="12", StormwindVault="12",
+    StormwroughtRuins="13", TheDeadmines="14",
+    KarazhanCrypt="15", LowerKara="15", UpperKara="15",
+    TheSunkenTemple="16", ZulGurub="17",
+    WarsongGulch="A", EmeraldSanctum="1", BlackfathomDeeps="2", TheCrescentGrove="3",
+    RagefireChasm="4", WailingCaverns="5", Maraudon="6",
+    DireMaulEast="7", DireMaulNorth="7", DireMaulWest="7",
+    RazorfenKraul="8", RazorfenDowns="9", OnyxiasLair="10",
+    ZulFarrak="11", CavernsOfTimeBlackMorass="12",
+    TheRuinsofAhnQiraj="13", TheTempleofAhnQiraj="13"
+}
 
 -- Entrance image -> parent dungeon(s) mapping
 local ENT_MAP = {
@@ -650,20 +671,18 @@ local kalimdor_list = {}
 for mapKey, data in pairs(AtlasMaps) do
     if type(data) == "table" and data.ZoneName and data.LevelRange and data.PlayerLimit then
         local subdir = get_output_subdir(mapKey)
-        if subdir == nil then
-            -- DLEast / DLWest: skip standalone page generation
-            goto continue_dungeon
-        end
-        local d_name  = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
-        local d_loc   = clean_string(translated_atlas[data.Location and data.Location[1]] or (data.Location and data.Location[1]) or "")
-        local d_limit = clean_string(data.PlayerLimit or "?")
-        local entry = {key=mapKey, name=d_name, level=data.LevelRange, location=d_loc, playerLimit=d_limit}
-        table.insert(dungeon_list, entry)
-        if EASTERN_DUNGEONS[mapKey] then
-            table.insert(eastern_list, entry)
-        elseif KALIMDOR_DUNGEONS[mapKey] then
-            table.insert(kalimdor_list, entry)
-        end
+        if subdir ~= nil then
+            local d_name  = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
+            local d_loc   = clean_string(translated_atlas[data.Location and data.Location[1]] or (data.Location and data.Location[1]) or "")
+            local d_limit = clean_string(data.PlayerLimit or "?")
+            local map_num = MAP_NUMBERS[mapKey] or ""
+            local entry = {key=mapKey, name=d_name, level=data.LevelRange, location=d_loc, playerLimit=d_limit, mapNumber=map_num}
+            table.insert(dungeon_list, entry)
+            if EASTERN_DUNGEONS[mapKey] then
+                table.insert(eastern_list, entry)
+            elseif KALIMDOR_DUNGEONS[mapKey] then
+                table.insert(kalimdor_list, entry)
+            end
 
         local f = open_file_with_dir(DOCS_BASE_DIR .. "/" .. subdir .. "/" .. mapKey .. ".md")
         if f then
@@ -729,22 +748,38 @@ for mapKey, data in pairs(AtlasMaps) do
             end
             f:close()
         end
-        ::continue_dungeon::
+        end
     end
 end
 
 -- ==========================================
 -- DUNGEON README (by region) + _category_.json
 -- ==========================================
-local function sort_by_level(list)
+local function sort_by_map_number(list)
     table.sort(list, function(a, b)
-        local la = (a.level or ""):match("^%d+") or "0"
-        local lb = (b.level or ""):match("^%d+") or "0"
-        return tonumber(la) < tonumber(lb)
+        local a1 = a.mapNumber or ""
+        local b1 = b.mapNumber or ""
+        local a_is_alpha = (a1:match("^[A-Z]"))
+        local b_is_alpha = (b1:match("^[A-Z]"))
+        
+        if a_is_alpha and not b_is_alpha then return true end
+        if not a_is_alpha and b_is_alpha then return false end
+        if a_is_alpha and b_is_alpha then
+            if a1 ~= b1 then return a1 < b1 end
+        else
+            local numA = tonumber(a1)
+            local numB = tonumber(b1)
+            if numA and numB then
+                if numA ~= numB then return numA < numB end
+            elseif numA then return true
+            elseif numB then return false
+            end
+        end
+        return a.name < b.name
     end)
 end
-sort_by_level(eastern_list)
-sort_by_level(kalimdor_list)
+sort_by_map_number(eastern_list)
+sort_by_map_number(kalimdor_list)
 
 -- Read DLEast and DLWest names from AtlasMaps for README headings
 local dleast_name  = "东部王国副本分布"
@@ -757,10 +792,12 @@ if AtlasMaps["DLWest"] and AtlasMaps["DLWest"].ZoneName then
 end
 
 -- Helper: format player limit as type label
-local function fmt_type(limit)
-    local n = tonumber(limit) or 0
+local function fmt_type(entry)
+    if (entry.mapNumber or ""):match("^[A-Z]") then return "PVP战场" end
+    local n = tonumber(entry.playerLimit) or 0
     if n >= 20 then return n .. "人团本"
-    else return n .. "人" end
+    elseif n > 0 then return n .. "人"
+    else return "未知" end
 end
 
 local idx_f = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/README.md")
@@ -769,17 +806,17 @@ if idx_f then
     -- DLEast map + Eastern table
     idx_f:write("## " .. dleast_name .. "\n\n")
     idx_f:write("![" .. dleast_name .. "](DLEast.png)\n\n")
-    idx_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :--- | :---: | :--- | :---: |\n")
+    idx_f:write("| " .. T.DUNGEON_MAP_NUM .. " | " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :---: | :--- | :---: | :--- | :---: |\n")
     for _, d in ipairs(eastern_list) do
-        idx_f:write("| [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d.playerLimit) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
+        idx_f:write("| " .. (d.mapNumber or "") .. " | [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
     end
     idx_f:write("\n")
     -- DLWest map + Kalimdor table
     idx_f:write("## " .. dlwest_name .. "\n\n")
     idx_f:write("![" .. dlwest_name .. "](DLWest.png)\n\n")
-    idx_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :--- | :---: | :--- | :---: |\n")
+    idx_f:write("| " .. T.DUNGEON_MAP_NUM .. " | " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_TYPE .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LEVEL_RANGE .. " |\n| :---: | :--- | :---: | :--- | :---: |\n")
     for _, d in ipairs(kalimdor_list) do
-        idx_f:write("| [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d.playerLimit) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
+        idx_f:write("| " .. (d.mapNumber or "") .. " | [" .. d.name .. "](" .. d.key .. ".md) | " .. fmt_type(d) .. " | " .. (d.location or "") .. " | " .. (d.level or "??") .. " |\n")
     end
     idx_f:write("\n")
     idx_f:close()
