@@ -778,6 +778,23 @@ local function sort_by_map_number(list)
         return a.name < b.name
     end)
 end
+
+table.insert(eastern_list, {key="BloodRingArena", name="血色竞技场", location="荆棘谷", level="50-60", playerLimit="BGS", mapNumber="C"})
+table.insert(kalimdor_list, {key="SunnygladeValley", name="阳光谷", location="时光之穴", level="60-60", playerLimit="BGS", mapNumber="B"})
+local function generate_empty_bg(key, name, loc, lvl)
+    local f = open_file_with_dir(DOCS_BASE_DIR .. "/dungeon/" .. key .. ".md")
+    if f then
+        f:write("# " .. name .. "\n\n")
+        f:write("**" .. T.LOCATION .. "** " .. loc .. "  \n")
+        f:write("**" .. T.SUITABLE_LEVEL .. "** " .. lvl .. "  \n")
+        f:write("**" .. T.PLAYER_LIMIT .. "** PVP战场  \n\n")
+        f:write("> 暂无详细地图数据。\n")
+        f:close()
+    end
+end
+generate_empty_bg("BloodRingArena", "血色竞技场", "荆棘谷", "50-60")
+generate_empty_bg("SunnygladeValley", "阳光谷", "时光之穴", "60-60")
+
 sort_by_map_number(eastern_list)
 sort_by_map_number(kalimdor_list)
 
@@ -834,16 +851,17 @@ local wb_list = {}
 for mapKey, data in pairs(AtlasMaps) do
     if WORLD_BOSSES[mapKey] and type(data) == "table" and data.ZoneName then
         local d_name = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
-        table.insert(wb_list, {key=mapKey, name=d_name, level=data.LevelRange})
+        local d_loc  = clean_string(translated_atlas[data.Location and data.Location[1]] or (data.Location and data.Location[1]) or "")
+        table.insert(wb_list, {key=mapKey, name=d_name, location=d_loc})
     end
 end
 table.sort(wb_list, function(a, b) return a.name < b.name end)
 local wb_f = open_file_with_dir(DOCS_BASE_DIR .. "/worldboss/README.md")
 if wb_f then
     wb_f:write("# 世界首领\n\n")
-    wb_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.LEVEL_RANGE .. " | " .. T.LINK .. " |\n| :--- | :--- | :--- |\n")
+    wb_f:write("| " .. T.DUNGEON_NAME .. " | " .. T.DUNGEON_ZONE .. " | " .. T.LINK .. " |\n| :--- | :--- | :--- |\n")
     for _, d in ipairs(wb_list) do
-        wb_f:write("| " .. d.name .. " | " .. (d.level or "??") .. " | [" .. T.ENTER_DOCS .. "](" .. d.key .. ".md) |\n")
+        wb_f:write("| " .. d.name .. " | " .. (d.location or "??") .. " | [" .. T.ENTER_DOCS .. "](" .. d.key .. ".md) |\n")
     end
     wb_f:close()
 end
