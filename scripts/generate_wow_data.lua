@@ -813,7 +813,7 @@ local function fmt_type(entry)
     if (entry.mapNumber or ""):match("^[A-Z]") then return "PVP战场" end
     local n = tonumber(entry.playerLimit) or 0
     if n >= 20 then return n .. "人团本"
-    elseif n > 0 then return n .. "人"
+    elseif n > 0 then return n .. "人本"
     else return "未知" end
 end
 
