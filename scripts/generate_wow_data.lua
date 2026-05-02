@@ -688,20 +688,30 @@ for mapKey, data in pairs(AtlasMaps) do
                 table.insert(kalimdor_list, entry)
             end
 
-        local f = open_file_with_dir(DOCS_BASE_DIR .. "/" .. subdir .. "/" .. mapKey .. ".md")
+        local outMapKey = mapKey
+        local outSubdir = subdir
+        if subdir == "dungeon" and mapKey:match("Ent$") then
+            outSubdir = subdir .. "/ent"
+            outMapKey = mapKey:gsub("Ent$", "")
+        end
+        local f = open_file_with_dir(DOCS_BASE_DIR .. "/" .. outSubdir .. "/" .. outMapKey .. ".md")
         if f then
             f:write("# " .. d_name .. "\n\n")
             f:write("![" .. d_name .. "](" .. mapKey .. ".png)\n\n")
             -- Entrance image (only for dungeons, not worldboss/transport)
             if subdir == "dungeon" and ENT_MAP[mapKey] then
-                f:write("![" .. d_name .. " 入口](" .. ENT_MAP[mapKey] .. ".png)\n\n")
+                local ent_base = ENT_MAP[mapKey]:gsub("Ent$", "")
+                f:write("[![" .. d_name .. " 入口](" .. ENT_MAP[mapKey] .. ".png)](ent/" .. ent_base .. ".md)\n\n")
             end
             f:write("**" .. T.LOCATION .. "** " .. clean_string(translated_atlas[data.Location[1]] or data.Location[1]) .. "  \n")
-            f:write("**" .. T.SUITABLE_LEVEL .. "** " .. clean_string(data.LevelRange or "??") .. " (" .. clean_string(data.MinLevel or "??") .. "+)  \n")
-            f:write("**" .. T.PLAYER_LIMIT .. "** " .. clean_string(data.PlayerLimit or "??") .. T.PLAYERS .. "  \n\n")
+            if not (outSubdir:find("/ent$")) then
+                f:write("**" .. T.SUITABLE_LEVEL .. "** " .. clean_string(data.LevelRange or "??") .. " (" .. clean_string(data.MinLevel or "??") .. "+)  \n")
+                f:write("**" .. T.PLAYER_LIMIT .. "** " .. clean_string(data.PlayerLimit or "??") .. T.PLAYERS .. "  \n")
+            end
+            f:write("\n")
             f:write("## " .. T.POINTS_OF_INTEREST .. "\n")
             for i, poi in ipairs(data) do
-                if type(poi) == "table" and poi[1] then
+                if type(poi) == "table" and poi[1] and poi[1] ~= "0" and poi[1] ~= 0 then
                     local name = clean_string(poi[1]):gsub("^%d+%)%s+", "")
                     local id = ""
                     if poi[3] then
@@ -723,10 +733,11 @@ for mapKey, data in pairs(AtlasMaps) do
 
                     f:write("- ")
                     if id ~= "" and id ~= "-1" then
+                        local rel_prefix = (outSubdir:find("/ent$")) and "../../" or "../"
                         if id:find("^%.%.%/outfit%/") then
                             f:write("[" .. clean_string(poi[1]) .. "](" .. id .. ".md)")
                         elseif poi[2] == 2 then
-                            f:write("[" .. clean_string(poi[1]) .. "](../npc/" .. id .. ".md)")
+                            f:write("[" .. clean_string(poi[1]) .. "](" .. rel_prefix .. "npc/" .. id .. ".md)")
                         else
                             f:write(clean_string(poi[1]))
                         end
@@ -744,8 +755,9 @@ for mapKey, data in pairs(AtlasMaps) do
                     local quests = AtlasQuest.data[q_idx][fact[2]]
                     if quests and #quests > 0 then
                         f:write("### " .. fact[1] .. "\n")
+                        local rel_prefix = (outSubdir:find("/ent$")) and "../../" or "../"
                         for _, q in ipairs(quests) do
-                            f:write("- [" .. clean_string(q.title) .. "](../quest/" .. q.id .. ".md)\n")
+                            f:write("- [" .. clean_string(q.title) .. "](" .. rel_prefix .. "quest/" .. q.id .. ".md)\n")
                         end
                     end
                 end
