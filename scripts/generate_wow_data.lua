@@ -278,6 +278,8 @@ setmetatable(_G.AtlasQuest.L, { __index = function(t, k) return k end })
 
 _G.AtlasLoot_Data = {}
 _G.AtlasLootBossButtons = {}
+_G.AtlasLootWBBossButtons = {}
+_G.AtlasLootBattlegrounds = {}
 _G.AtlasLootItems = {}
 _G.AtlasMaps = {}
 
@@ -335,6 +337,8 @@ local loot_files = {"Instances.lua", "PvP.lua", "Crafting.lua", "Factions.lua", 
 for _, file in ipairs(loot_files) do
     load_addon_file(ADDONS_DIR .. "/AtlasLoot/Database/" .. file)
 end
+deep_merge(AtlasLootBossButtons, AtlasLootWBBossButtons)
+deep_merge(AtlasLootBossButtons, AtlasLootBattlegrounds)
 
 print("Loading locales...")
 if LANG == "en" then
@@ -535,7 +539,7 @@ local npcs = {}
 local npc_names_to_ids = {}
 
 for mapKey, pois in pairs(AtlasMaps) do
-    if type(pois) == "table" and pois.ZoneName and pois.LevelRange and pois.PlayerLimit then
+    if type(pois) == "table" and pois.ZoneName and get_output_subdir(mapKey) ~= nil then
         local dungeon_name = clean_string(translated_atlas[pois.ZoneName[1]] or pois.ZoneName[1])
         for i, poi in ipairs(pois) do
             if type(poi) == "table" and poi[2] == 2 and poi[3] and type(poi[3]) ~= "table" then -- NPC type
@@ -669,7 +673,7 @@ local eastern_list = {}
 local kalimdor_list = {}
 
 for mapKey, data in pairs(AtlasMaps) do
-    if type(data) == "table" and data.ZoneName and data.LevelRange and data.PlayerLimit then
+    if type(data) == "table" and data.ZoneName and get_output_subdir(mapKey) ~= nil then
         local subdir = get_output_subdir(mapKey)
         if subdir ~= nil then
             local d_name  = clean_string(translated_atlas[data.ZoneName[1]] or data.ZoneName[1])
