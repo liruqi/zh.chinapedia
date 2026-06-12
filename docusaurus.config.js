@@ -50,9 +50,9 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl: ({ docPath }) => {
-            if (docPath.startsWith('wow/turtle/')) {
-              return `https://github.com/liruqi/wuguifu/edit/master/${docPath.substring(
-                'wow/turtle/'.length,
+            if (docPath.startsWith('wow/capycraft/')) {
+              return `https://github.com/liruqi/capycraft/edit/master/${docPath.substring(
+                'wow/capycraft/'.length,
               )}`;
             }
             return `https://github.com/liruqi/zh.chinapedia/edit/main/docs/${docPath}`;
