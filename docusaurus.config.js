@@ -51,7 +51,7 @@ const config = {
           // Remove this to remove the "edit this page" links.
           editUrl: ({ docPath }) => {
             if (docPath.startsWith('wow/capycraft/')) {
-              return `https://github.com/liruqi/capycraft/edit/master/${docPath.substring(
+              return `https://github.com/liruqi/capycraft/edit/main/${docPath.substring(
                 'wow/capycraft/'.length,
               )}`;
             }
