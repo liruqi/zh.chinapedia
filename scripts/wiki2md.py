@@ -238,6 +238,11 @@ def to_simplified(zh_title, cache):
     return text
 
 
+def langlink_title(entry):
+    """兼容 formatversion=1（"*"）与 formatversion=2（"title"）的 langlinks 结构。"""
+    return entry.get("*") or entry.get("title") or ""
+
+
 def zh_title_for(lang, title, cache):
     """源词条在中文维基的对应条目名（简体），没有则返回 None。"""
     key = "zh:%s:%s" % (lang, title)
@@ -250,7 +255,7 @@ def zh_title_for(lang, title, cache):
     for page in data.get("query", {}).get("pages", []):
         ll = page.get("langlinks")
         if ll:
-            zh = ll[0]["*"]
+            zh = langlink_title(ll[0])
             break
     result = to_simplified(zh, cache) if zh else None
     cache.set(key, result)
@@ -283,7 +288,7 @@ def build_glossary(lang, targets, cache, limit, quiet=False):
             ll = page.get("langlinks")
             if not ll:
                 continue
-            simp = to_simplified(ll[0]["*"], cache)
+            simp = to_simplified(langlink_title(ll[0]), cache)
             if simp:
                 glossary[page["title"]] = simp
         if i + 40 < len(targets):
