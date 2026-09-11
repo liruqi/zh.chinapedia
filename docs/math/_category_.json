@@ -1,0 +1,8 @@
+{
+  "label": "数学",
+  "link": {
+    "type": "generated-index",
+    "slug": "math",
+    "description": "数学相关条目，涵盖数论、素数分布等主题。"
+  }
+}
