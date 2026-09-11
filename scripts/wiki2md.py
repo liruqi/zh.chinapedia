@@ -87,6 +87,7 @@ SKIP_NS = re.compile(
 LINK_RE = re.compile(r"\[\[([^\[\]|#<>]+)(?:#[^\[\]|<>]*)?(?:\|[^\[\]]*)?\]\]")
 BAD_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 META_RE = re.compile(r"===\s*META\s*===(.*?)===\s*CONTENT\s*===", re.S | re.I)
+AUTOLINK_RE = re.compile(r"<((?:https?|ftp)://[^<>\s]+)>")
 
 
 def log(msg, quiet=False):
@@ -342,8 +343,8 @@ SYSTEM_PROMPT = """你是「中国百科」（zh.chinapedia）的资深中文编
    [url 文本] 转成 [文本](url)；<ref> 内容整理为文末「参考文献」编号列表，并保留其中的 URL。
 5. wikitext 标记转成标准 Markdown：'''粗体'''、''斜体''、== 标题 ==、列表、表格等；
    删除 {{Short description}}、{{Infobox}} 等信息框模板与页脚导航模板，但保留其中有价值的正文信息。
-6. 站点未启用 KaTeX，数学公式请用行内代码（反引号）或代码块表示；
-   正文中不要出现未转义的 < > 与花括号，以免破坏 MDX 解析。
+6. 站点用 MDX 解析：数学公式请用行内代码（反引号）或代码块表示；
+   正文中不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，一律写成 [文本](url)。
 7. 不要添加原文没有的内容，也不要写「本文翻译自……」之类的说明文字。
 8. 输出必须严格遵循以下格式，不要有任何前言后语：
 
@@ -419,6 +420,15 @@ def strip_frontmatter(text):
     if m and re.search(r"^\s*title\s*:", m.group(1), re.M):
         return text[m.end():]
     return text
+
+
+def fix_autolinks(text):
+    """把 <url> 形式的自动链接转成 Markdown 链接。
+
+    MDX 会把 <https://…> 当成 JSX 解析（https: 被视作命名空间），
+    抛出 `Unexpected character "/" before local name` 导致 docusaurus 构建失败。
+    """
+    return AUTOLINK_RE.sub(lambda m: "[原文](%s)" % m.group(1), text)
 
 
 def safe_filename(name):
@@ -529,6 +539,7 @@ def main(argv=None):
     doc_title = doc_title or zh_title or real_title
     doc_cat = (args.category or doc_cat or "其他").strip()
     body = "\n\n".join(p.strip() for p in parts if p.strip())
+    body = fix_autolinks(body)
     if not body:
         raise SystemExit("模型没有返回正文，已中止")
 
