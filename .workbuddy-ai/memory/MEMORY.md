@@ -7,6 +7,12 @@
   加 `--no-katex` 才退回行内代码 / 代码块（SYSTEM_PROMPT 第 6 条 `RULE6_KATEX` / `RULE6_CODE`）。
 - KaTeX 模式下脚本会自动做 GitHub 兼容后处理：`escape_dollar_in_urls()` + `fix_github_math()`。
 
+## 中文条目文风
+
+- 开头用**中文百科式**写法：`**词条名**（英语：English name），也称为**别名1**、**别名2**，是指……`。
+- 不要直译英文语境里才成立的句子（如「有时『孪生素数』一词也用来指一对孪生素数，它的另一个名称是
+  prime twin 或 prime pair」这类），改成中文读者习惯的「（英语：…）+ 中文别名」表达。
+
 ## 站点栈与坑
 
 - Docusaurus 3.10 + MDX 3，已配 `remark-math` + `rehype-katex`（见 docusaurus.config.js）。
