@@ -19,6 +19,9 @@
     python3 scripts/wiki2md.py https://en.wikipedia.org/wiki/Sexy_prime \
         -o docs/math/六素数.md --dry-run --create-category
 
+    # 公式用 KaTeX（$…$ / $$…$$）而不是行内代码 / 代码块，输出为 {条目名}.katex.md
+    python3 scripts/wiki2md.py https://en.wikipedia.org/wiki/Twin_prime --katex
+
 输出路径
 --------
 未指定 -o 时按 `docs/{一级分类}/{中文条目名}.md` 生成。一级分类优先取 --category，
@@ -331,6 +334,20 @@ def split_wikitext(text, max_chars):
 
 # --------------------------------------------------------------------------- LLM
 
+RULE6_CODE = """6. 站点用 MDX 解析：数学公式请用行内代码（反引号）或代码块表示；
+   正文中不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，一律写成 [文本](url)。"""
+
+RULE6_KATEX = r"""6. 站点用 MDX + remark-math 解析：数学公式一律用 KaTeX 表示——行内公式写 $…$；
+   独立成段的公式必须写成三行形式，即 $$ 单独占一行、中间一行是公式、$$ 单独占一行：
+       $$
+       \frac{1}{2}
+       $$
+   写成一行的 $$…$$ 会被 remark-math 当成行内公式，务必避免。
+   公式内使用 LaTeX 命令（如 \frac、\log、\pi_2、\times、\pm、\equiv、\pmod、\liminf、
+   \int_2^x），不要用反引号或代码块表示数学公式。
+   公式之外的正文仍不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，
+   一律写成 [文本](url)。"""
+
 SYSTEM_PROMPT = """你是「中国百科」（zh.chinapedia）的资深中文编辑，负责把外文维基百科词条完整转写为简体中文条目。
 
 硬性要求：
@@ -343,8 +360,7 @@ SYSTEM_PROMPT = """你是「中国百科」（zh.chinapedia）的资深中文编
    [url 文本] 转成 [文本](url)；<ref> 内容整理为文末「参考文献」编号列表，并保留其中的 URL。
 5. wikitext 标记转成标准 Markdown：'''粗体'''、''斜体''、== 标题 ==、列表、表格等；
    删除 {{Short description}}、{{Infobox}} 等信息框模板与页脚导航模板，但保留其中有价值的正文信息。
-6. 站点用 MDX 解析：数学公式请用行内代码（反引号）或代码块表示；
-   正文中不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，一律写成 [文本](url)。
+{RULE6}
 7. 不要添加原文没有的内容，也不要写「本文翻译自……」之类的说明文字。
 8. 输出必须严格遵循以下格式，不要有任何前言后语：
 
@@ -353,6 +369,11 @@ TITLE: <简体中文条目名>
 CATEGORY: <一级分类，2-4 个汉字，如 数学 / 物理 / 化学 / 生物 / 人物 / 历史 / 计算机 / 经济>
 ===CONTENT===
 <Markdown 正文，从首段开始；不要写 YAML front matter，不要重复 title>"""
+
+
+def system_prompt(katex=False):
+    """--katex 时把第 6 条要求换成「公式用 KaTeX（$…$ / $$…$$）表示」。"""
+    return SYSTEM_PROMPT.replace("{RULE6}", RULE6_KATEX if katex else RULE6_CODE)
 
 
 def build_user_prompt(lang, title, zh_title, category, glossary, chunk, part, total, tail):
@@ -494,6 +515,9 @@ def main(argv=None):
     ap.add_argument("--docs-root", default="docs", help="默认输出根目录（默认 docs）")
     ap.add_argument("--repo-root", help="仓库根目录，默认自动向上查找")
     ap.add_argument("--create-category", action="store_true", help="目录下缺少 _category_.json 时自动生成")
+    ap.add_argument("--katex", action="store_true",
+                    help="数学公式用 KaTeX（$…$ / $$…$$）而非行内代码 / 代码块表示；"
+                         "默认输出文件名加 .katex 后缀")
     ap.add_argument("--dry-run", action="store_true", help="只输出结果，不写文件")
     ap.add_argument("--no-cache", action="store_true", help="不使用本地接口缓存")
     ap.add_argument("-q", "--quiet", action="store_true")
@@ -525,7 +549,7 @@ def main(argv=None):
     for idx, chunk in enumerate(chunks, 1):
         user = build_user_prompt(lang, real_title, zh_title, args.category,
                                  glossary, chunk, idx, len(chunks), tail)
-        reply = llm_chat(cfg, [{"role": "system", "content": SYSTEM_PROMPT},
+        reply = llm_chat(cfg, [{"role": "system", "content": system_prompt(args.katex)},
                                {"role": "user", "content": user}], args.temperature)
         t, c, content = parse_meta(reply)
         if t and not doc_title:
@@ -544,7 +568,8 @@ def main(argv=None):
         raise SystemExit("模型没有返回正文，已中止")
 
     hazards = []
-    if re.search(r"[{}]", body):
+    if not args.katex and re.search(r"[{}]", body):
+        # KaTeX 模式下花括号是公式的正常组成部分，无需提示
         hazards.append("花括号 {}")
     if re.search(r"<[A-Za-z/]", body):
         hazards.append("疑似 HTML/JSX 标签")
@@ -560,8 +585,9 @@ def main(argv=None):
         out_path = os.path.abspath(args.output)
     else:
         root = find_repo_root(args.repo_root, args.docs_root)
-        out_path = os.path.join(root, args.docs_root,
-                                safe_filename(doc_cat), safe_filename(doc_title) + ".md")
+        suffix = ".katex" if args.katex else ""
+        out_path = os.path.join(root, args.docs_root, safe_filename(doc_cat),
+                                safe_filename(doc_title) + suffix + ".md")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("---\ntitle: %s\n---\n\n%s\n" % (doc_title, body))
