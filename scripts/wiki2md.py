@@ -19,8 +19,8 @@
     python3 scripts/wiki2md.py https://en.wikipedia.org/wiki/Sexy_prime \
         -o docs/math/六素数.md --dry-run --create-category
 
-    # 公式用 KaTeX（$…$ / $$…$$）而不是行内代码 / 代码块，输出为 {条目名}.katex.md
-    python3 scripts/wiki2md.py https://en.wikipedia.org/wiki/Twin_prime --katex
+    # 公式默认用 KaTeX（$…$ / $$…$$）；加 --no-katex 才退回行内代码 / 代码块
+    python3 scripts/wiki2md.py https://en.wikipedia.org/wiki/Twin_prime --no-katex
 
 输出路径
 --------
@@ -337,14 +337,23 @@ def split_wikitext(text, max_chars):
 RULE6_CODE = """6. 站点用 MDX 解析：数学公式请用行内代码（反引号）或代码块表示；
    正文中不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，一律写成 [文本](url)。"""
 
-RULE6_KATEX = r"""6. 站点用 MDX + remark-math 解析：数学公式一律用 KaTeX 表示——行内公式写 $…$；
-   独立成段的公式必须写成三行形式，即 $$ 单独占一行、中间一行是公式、$$ 单独占一行：
-       $$
-       \frac{1}{2}
-       $$
-   写成一行的 $$…$$ 会被 remark-math 当成行内公式，务必避免。
-   公式内使用 LaTeX 命令（如 \frac、\log、\pi_2、\times、\pm、\equiv、\pmod、\liminf、
-   \int_2^x），不要用反引号或代码块表示数学公式。
+RULE6_KATEX = r"""6. 站点用 MDX + remark-math 解析，同时要能在 GitHub 上直接渲染。数学公式一律用 KaTeX 表示，
+   并严格遵守以下几条：
+   (a) 行内公式写 $…$；独立成段的公式必须写成三行形式，即 $$ 单独占一行、中间一行是公式、
+       $$ 单独占一行：
+           $$
+           \frac{1}{2}
+           $$
+       写成一行的 $$…$$ 会被 remark-math 当成行内公式，务必避免。
+   (b) 行内公式的起始 $ 前面必须是空白或行首，绝不能紧跟在中文标点后面。GitHub 遇到
+       「，$x$」「（$x$」「。$x$」这类写法不会渲染，必须写成「， $x$」或改写句子。
+       错误：对于形如 $x$（$n > 1$ 为自然数）的对，$n$ 的末位……
+       正确：对于形如 $x$ 的对（其中 $n > 1$ 为自然数），$n$ 的末位……
+       结尾 $ 后面可以直接跟中文标点，例如「$p$，使得」是允许的。
+   (c) 公式内使用 LaTeX 命令（如 \frac、\log、\pi_2、\times、\pm、\equiv、\pmod、\liminf、
+       \int_2^x），不要用反引号或代码块表示数学公式。
+   (d) 正文里不要出现不是公式分隔符的 $。URL 中若含 $，一律写成 %24。
+   (e) 不要用 $`…`$ 这种 GitHub 专用写法，remark-math 不认，会导致站点渲染失败。
    公式之外的正文仍不得出现未转义的 < > 与花括号；尤其禁止 <https://…> 形式的自动链接，
    一律写成 [文本](url)。"""
 
@@ -372,7 +381,8 @@ CATEGORY: <一级分类，2-4 个汉字，如 数学 / 物理 / 化学 / 生物 
 
 
 def system_prompt(katex=False):
-    """--katex 时把第 6 条要求换成「公式用 KaTeX（$…$ / $$…$$）表示」。"""
+    """默认（katex=True）用「公式用 KaTeX（$…$ / $$…$$）」的第 6 条要求；
+    --no-katex 时换成「公式用行内代码 / 代码块」的旧要求。"""
     return SYSTEM_PROMPT.replace("{RULE6}", RULE6_KATEX if katex else RULE6_CODE)
 
 
@@ -452,6 +462,59 @@ def fix_autolinks(text):
     return AUTOLINK_RE.sub(lambda m: "[原文](%s)" % m.group(1), text)
 
 
+# ----------------------------------------------------------------- GitHub 兼容
+
+# 行内公式 $…$（排除 $$ 块公式与转义的 \$）
+INLINE_MATH_RE = re.compile(r"(?<!\$)\$(?!\$)[^\n$]+?\$")
+# Markdown 链接 [text](url) 中的 url 部分
+MD_LINK_URL_RE = re.compile(r"\]\(([^()\s]+)\)")
+
+
+def escape_dollar_in_urls(text):
+    """把链接 URL 里裸露的 $ 改成 %24。
+
+    GitHub 把正文中的 $ 一律当作公式分隔符，未配对的 $ 会吞掉后面的文本；
+    官方文档要求非分隔符的 $ 必须转义。%24 与原 URL 等价且不影响显示文本。
+    """
+    def repl(m):
+        url = m.group(1)
+        if "$" not in url:
+            return m.group(0)
+        return "](%s)" % url.replace("$", "%24")
+    return MD_LINK_URL_RE.sub(repl, text)
+
+
+def _space_before_inline_math(line):
+    """行内公式的起始 $ 若紧跟在非空白字符后，插入一个空格。"""
+    out, pos = [], 0
+    for m in INLINE_MATH_RE.finditer(line):
+        out.append(line[pos:m.start()])
+        if m.start() > 0 and not line[m.start() - 1].isspace() and line[m.start() - 1] != "$":
+            out.append(" ")
+        pos = m.start()
+    out.append(line[pos:])
+    return "".join(out)
+
+
+def fix_github_math(text):
+    """让行内公式在 GitHub 上也能渲染。
+
+    GitHub 的 MathJax 预处理要求行内公式的起始 $ 前面是空白或行首；
+    紧跟在中文标点（，。、：（）「」等）后面的 $…$ 不会被渲染，
+    例如「（$n > 1$ 为自然数）」中的公式会原样显示为源码。
+    这里统一在起始 $ 前补一个空格。代码块与 $$ 块公式不动。
+    """
+    out, in_fence = [], False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+        elif not in_fence and stripped != "$$":
+            line = _space_before_inline_math(line)
+        out.append(line)
+    return "\n".join(out)
+
+
 def safe_filename(name):
     cleaned = BAD_FILENAME.sub("", (name or "").strip()).strip().strip(".")
     return cleaned or "未命名"
@@ -515,9 +578,9 @@ def main(argv=None):
     ap.add_argument("--docs-root", default="docs", help="默认输出根目录（默认 docs）")
     ap.add_argument("--repo-root", help="仓库根目录，默认自动向上查找")
     ap.add_argument("--create-category", action="store_true", help="目录下缺少 _category_.json 时自动生成")
-    ap.add_argument("--katex", action="store_true",
-                    help="数学公式用 KaTeX（$…$ / $$…$$）而非行内代码 / 代码块表示；"
-                         "默认输出文件名加 .katex 后缀")
+    ap.add_argument("--no-katex", dest="katex", action="store_false", default=True,
+                    help="数学公式不用 KaTeX，改用行内代码 / 代码块表示"
+                         "（默认用 KaTeX，GitHub 与站点都能渲染）")
     ap.add_argument("--dry-run", action="store_true", help="只输出结果，不写文件")
     ap.add_argument("--no-cache", action="store_true", help="不使用本地接口缓存")
     ap.add_argument("-q", "--quiet", action="store_true")
@@ -564,6 +627,9 @@ def main(argv=None):
     doc_cat = (args.category or doc_cat or "其他").strip()
     body = "\n\n".join(p.strip() for p in parts if p.strip())
     body = fix_autolinks(body)
+    if args.katex:
+        body = escape_dollar_in_urls(body)
+        body = fix_github_math(body)
     if not body:
         raise SystemExit("模型没有返回正文，已中止")
 
@@ -585,9 +651,8 @@ def main(argv=None):
         out_path = os.path.abspath(args.output)
     else:
         root = find_repo_root(args.repo_root, args.docs_root)
-        suffix = ".katex" if args.katex else ""
         out_path = os.path.join(root, args.docs_root, safe_filename(doc_cat),
-                                safe_filename(doc_title) + suffix + ".md")
+                                safe_filename(doc_title) + ".md")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("---\ntitle: %s\n---\n\n%s\n" % (doc_title, body))
