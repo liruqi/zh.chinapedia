@@ -9,3 +9,5 @@ sidebar_position: 1
 * 网站：[chinapedia.org](https://chinapedia.org)
 * Telegram: [@chinapedia](https://t.me/chinapedia)
 * GitHub: [liruqi/zh.chinapedia](https://github.com/liruqi/zh.chinapedia)
+
+最近站长开始用 WorkBuddy 进行文献翻译，欢迎用我的[邀请链接](https://workbuddy.ai/invite?code=8Q9BPXYX)注册使用。
