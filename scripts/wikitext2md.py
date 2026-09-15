@@ -142,7 +142,7 @@ DROP_TEMPLATES = {
     "portal", "authority control", "commons category-inline", "commons",
     "sister project links", "l-functions-footer", "bernhard riemann",
     "navbox", "infobox", "hatnote", "see also", "further", "main",
-    "mathworld", "eom", "citation needed", "cn", "clarify", "dubious",
+    "citation needed", "cn", "clarify", "dubious",
     "citation needed span", "fact", "who", "when", "according to whom",
     "clarification needed", "inline cleanup needed", "grammar",
 }
@@ -194,19 +194,229 @@ def _harv_cite(authors, year, extra, paren):
     return core
 
 
+# --------------------------------------------------------------------------- 书目索引
+#
+# 维基正文里的 <ref> 常常只写 {{harvnb|Connes|2026}} 这种短引用，完整条目在
+# 文末 ==References== 的 {{citation | last=… | year=… | doi=… }} 里。只把短引用
+# 翻成「Connes (2026)」的话脚注就是一条没有外链的空壳。这里先把整篇的文献条目
+# 按 (姓氏, 年份) 建索引，再让短引用还原成带 DOI/URL 的完整引文。
+
+HARV_TEMPLATES = {"harvtxt", "harvnb", "harvp", "sfnp", "sfn", "harv", "harvs",
+                  "harvcol", "harvcolnb", "harvtxtnb"}
+
+_YEAR_RE = re.compile(r"^\d{3,4}[a-z]?(?:[–-]\d{3,4}[a-z]?)?$")
+
+
+def _plain(s):
+    """去掉斜体标记 '' / '''；保留 [[链接]]，稍后由 wiki_inline 转成 Markdown。"""
+    return re.sub(r"''+", "", s or "")
+
+
+def clean_field(s):
+    """归一化引用模板里的字段。
+
+    书目（==References==）里的字段是**原始 wikitext**，不走正文的 math / 链接转换，
+    直接拼进脚注会把 ``<math>``、''斜体''、``[[a|b]]`` 原样漏出来（例如 Knapowski
+    1962 的标题里就含 ``<math>\\pi(x)-\\operatorname{li} x</math>``）。
+    """
+    if not s:
+        return s
+    s = html.unescape(s)
+    # <math>…</math> → 行内 KaTeX（书目里的一律按行内处理）
+    s = re.sub(r"<math[^>]*>(.*?)</math>",
+               lambda m: "$%s$" % re.sub(r"\s+", " ", m.group(1)).strip(),
+               s, flags=re.S)
+    s = re.sub(r"''+", "", s)
+    s = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", s)
+    s = re.sub(r"\[\[([^\]]*)\]\]", r"\1", s)
+    return clean_ws(s)
+
+
+def _norm_name(s):
+    return re.sub(r"[^a-z0-9]", "", _plain(s).lower())
+
+
+def _bib_surnames(named):
+    out = []
+    for i in range(1, 6):
+        v = (named.get("last%d" % i) or named.get("surname%d" % i) or
+             named.get("author%d" % i) or "").strip()
+        if v:
+            out.append(_plain(v))
+    if not out:
+        v = (named.get("last") or named.get("surname") or
+             named.get("author") or "").strip()
+        if v:
+            out.append(_plain(v))
+    return [s for s in out if s]
+
+
+def _bib_keys(surn, yr):
+    n = [_norm_name(s) for s in surn]
+    if not n or not n[0]:
+        return []
+    y = _norm_name(yr)
+    return [("".join(n), y), (n[0], y)]
+
+
+def _bib_sig(named, yr):
+    """条目指纹：同一本书常常在 <ref> 里和 ==References== 里各出现一次，要去重，
+    否则唯一命中判定会被重复计数骗过。"""
+    return "|".join(_norm_name(named.get(k) or "")
+                    for k in ("title", "chapter", "journal", "doi", "url", "isbn")) \
+        + "|" + _norm_name(yr)
+
+
+def build_bibliography(wikitext):
+    """扫描整篇 wikitext，把文献条目按 (姓氏, 年份) 建成 键 -> [参数表] 索引。"""
+    bib = {}
+    i = 0
+    while True:
+        found = find_template(wikitext, i)
+        if not found:
+            break
+        s, j, name, raw = found
+        i = j
+        n = name.strip().lower().replace("_", " ")
+        if not (n == "citation" or n == "cite" or n.startswith("cite ")):
+            continue
+        _, named = parse_args(raw)
+        surn = _bib_surnames(named)
+        if not surn:
+            continue
+        yr = (named.get("year") or named.get("year1") or named.get("date") or "").strip()
+        sig = _bib_sig(named, yr)
+        for k in _bib_keys(surn, yr):
+            slot = bib.setdefault(k, {})
+            slot.setdefault(sig, named)
+    return {k: list(v.values()) for k, v in bib.items()}
+
+
+def bib_lookup(bib, surnames, year):
+    """只有唯一命中才采用，避免「Odlyzko」这种没写年份的短引用张冠李戴。"""
+    n = [_norm_name(s) for s in surnames if s]
+    if not n or not bib:
+        return None
+    y = _norm_name(year)
+    for k in (("".join(n), y), (n[0], y), (n[0], "")):
+        hits = bib.get(k)
+        if hits and len(hits) == 1:
+            return hits[0]
+    return None
+
+
+def citeref_url(ctx, surnames, year):
+    """指向本页 bibliography 锚点 #CITEREF<姓><年>（维基自己的做法）。"""
+    title = ctx.get("title")
+    if not title or not surnames:
+        return None
+    anchor = "CITEREF" + "".join(_plain(s).replace(" ", "") for s in surnames) + (year or "")
+    return page_url("%s#%s" % (title, anchor), ctx.get("lang", "en"))
+
+
+def _harv_params(n, pos, named):
+    """把 harv* 家族的参数统一成 (姓氏列表, 年份列表, 定位, 作者链, txt 标志)。
+
+    几种常见写法：
+      {{harvnb|Connes|2026}}                       位置参数 = 姓… + 年
+      {{harvtxt|Ireland|Rosen|1990|pp=358–361}}
+      {{harvs|txt|first=Bernhard|last=Riemann|year=1859}}      ← 作者/年在命名参数里
+      {{harvs|last=Deligne|year1=1974|year2=1980|txt}}         ← txt 也可能在末尾
+    """
+    flags = {p.strip().lower() for p in pos}
+    txt_flag = "txt" in flags
+    authorlink = (named.get("authorlink") or named.get("author-link") or
+                  named.get("author1-link") or named.get("author1link") or "")
+    extra = (named.get("p") or named.get("pp") or named.get("page") or
+             named.get("pages") or named.get("loc") or named.get("at") or "").strip()
+
+    years, surnames = [], []
+
+    if n == "harvs":
+        last = (named.get("last") or named.get("last1") or "").strip()
+        if last:
+            surnames.append(_plain(last))
+        for key in ("year", "year1", "year2", "year3"):
+            v = (named.get(key) or "").strip()
+            if v and v not in years:
+                years.append(v)
+        # 兜底：少数 harvs 也用位置参数写作者
+        if not surnames:
+            for p in pos:
+                p = p.strip()
+                if p and p.lower() not in ("txt", "author", "author-"):
+                    surnames.append(_plain(p))
+    else:
+        for p in pos:
+            p = p.strip()
+            if not p or p.lower() in ("txt", "author", "author-"):
+                continue
+            if _YEAR_RE.match(p):
+                years.append(p)
+            else:
+                surnames.append(_plain(p))
+        for key in ("year", "year1"):
+            v = (named.get(key) or "").strip()
+            if v and v not in years:
+                years.append(v)
+
+    return surnames, years, extra, authorlink, txt_flag
+
+
+def harv_cite(n, pos, named, ctx):
+    """短引用 → 完整引文（能查到书目时）或带 #CITEREF 锚点链接的「作者 (年)」。"""
+    surnames, years, extra, authorlink, txt_flag = _harv_params(n, pos, named)
+    year = years[0] if years else ""
+    year_txt = ", ".join(years)
+    who = " & ".join(s for s in surnames if s)
+
+    # 1) 命中本页书目 → 直接输出带 DOI/URL 的完整引文
+    entry = bib_lookup(ctx.get("bib") or {}, surnames, year) if (who and year) else None
+    if entry is not None:
+        cit = _plain(fmt_citation([], entry)).strip()
+        if not cit:
+            cit = who
+        if extra:
+            cit = cit.rstrip(".") + ", %s." % extra
+        # 括号形态（harvnb / sfnp …）必须留前导空格，否则会粘在前面的词上：
+        # "…pure mathematics.Bombieri, Enrico (2000)."
+        if not txt_flag and n not in ("harvtxt", "harv"):
+            cit = " " + cit
+        return cit
+
+    # 2) 查不到 → 保留「作者 (年)」形态，但至少挂上指向书目锚点的链接
+    if not who:
+        who = _plain(authorlink)
+    if not who:
+        return ""
+    label = ("%s (%s)" % (who, year_txt)) if year_txt else who
+    if not txt_flag and n not in ("harvtxt", "harv"):
+        # 括号形态（harvnb/sfnp）需要前导空格，否则会和前一个词粘在一起
+        label = " (%s)" % (" ".join(x for x in (who, year_txt) if x))
+    url = citeref_url(ctx, surnames, year)
+    if url:
+        return " [%s](%s)" % (label.strip(), url)
+    return label
+
+
 def fmt_citation(pos, named):
     """{{citation}} / {{cite web}} / {{cite arXiv}} / {{cite report}} 等。"""
-    authors = _join_authors(_author_bits(named))
-    year = named.get("year") or named.get("date") or named.get("publication-date") or ""
-    title = named.get("title") or named.get("chapter") or (pos[0] if pos else "")
-    journal = named.get("journal") or named.get("work") or named.get("newspaper") or \
-        named.get("website") or named.get("publisher") or named.get("institution") or ""
+    authors = clean_field(_join_authors(_author_bits(named)))
+    year = clean_field(named.get("year") or named.get("date") or
+                       named.get("publication-date") or "")
+    title = clean_field(named.get("title") or named.get("chapter") or (pos[0] if pos else ""))
+    journal = clean_field(named.get("journal") or named.get("work") or
+                          named.get("newspaper") or named.get("website") or
+                          named.get("publisher") or named.get("institution") or "")
     volume = named.get("volume") or ""
     issue = named.get("issue") or ""
     pages = named.get("pages") or named.get("page") or ""
     doi = named.get("doi") or ""
     arxiv = named.get("arxiv") or named.get("eprint") or ""
     url = named.get("url") or ""
+    # 原链接已失效时改用存档链接，否则脚注里的外链点了也是 404
+    if (named.get("url-status") or "").strip().lower() in ("dead", "usurped", "unfit"):
+        url = named.get("archive-url") or named.get("archiveurl") or url
     isbn = named.get("isbn") or ""
     mr = named.get("mr") or ""
     parts = []
@@ -232,16 +442,39 @@ def fmt_citation(pos, named):
     if isbn:
         bits.append("ISBN %s" % isbn)
     if mr:
-        bits.append("MR %s" % mr)
+        m = mr.strip().upper()
+        if not m.startswith("MR"):
+            m = "MR" + m
+        bits.append("[%s](https://mathscinet.ams.org/mathscinet-getitem?mr=%s)" % (m, m))
     if arxiv:
-        bits.append("arXiv:%s" % arxiv)
+        aid = arxiv.strip()
+        bits.append("[arXiv:%s](https://arxiv.org/abs/%s)"
+                    % (aid, urllib.parse.quote(aid, safe="/.")))
+    if named.get("jstor"):
+        j = named["jstor"].strip()
+        bits.append("[JSTOR %s](https://www.jstor.org/stable/%s)" % (j, j))
+    if named.get("bibcode"):
+        b = named["bibcode"].strip()
+        bits.append("[%s](https://ui.adsabs.harvard.edu/abs/%s)"
+                    % (b, urllib.parse.quote(b, safe=".")))
+    if named.get("pmid"):
+        p = named["pmid"].strip()
+        bits.append("[PMID %s](https://pubmed.ncbi.nlm.nih.gov/%s/)" % (p, p))
+    if named.get("pmc"):
+        p = named["pmc"].strip().upper()
+        bits.append("[%s](https://www.ncbi.nlm.nih.gov/pmc/articles/%s/)" % (p, p))
     if doi:
         d = doi if doi.startswith("10.") else doi
         bits.append("doi:[%s](https://doi.org/%s)" % (d, urllib.parse.quote(d, safe="/.")))
     if url:
         bits.append("[%s](%s)" % (named.get("title") or "link", url))
     body = (head + ". " if head else "") + ". ".join(b for b in bits if b)
-    return body.strip() + ("." if body and not body.endswith(".") else "")
+    body = body.strip()
+    # 结尾是孤零零的卷号（``*Publisher* **30**``）时补句号会变成 "**30**., p. 83"
+    if body and not body.endswith((".", "!", "?", ":", ";")) \
+            and not re.search(r"\*\*\d+\*\*$", body):
+        body += "."
+    return body
 
 
 def template_sub(name, pos, named, ctx):
@@ -252,30 +485,28 @@ def template_sub(name, pos, named, ctx):
         return ""
 
     # ---- 短引用（作者-年份） -------------------------------------------------
-    if n in ("harvtxt", "harvnb", "harvp", "sfnp", "sfn", "harv", "harvs", "harvcol",
-             "harvcolnb", "harvtxtnb"):
-        txt_flag = "txt" in [p.strip().lower() for p in pos]
-        if n == "harvs" or txt_flag:
-            last = named.get("last") or (pos[1] if len(pos) > 1 else "")
-            first = named.get("first") or (pos[0] if pos else "")
-            year = named.get("year") or ""
-            who = ("%s %s" % (first, last)).strip() if last else first
-            if txt_flag and not who:
-                who = " ".join(p for p in pos if p.strip().lower() != "txt")
-            out = "%s (%s)" % (who, year) if year else who
-            return out
-        # 其余：位置参数 [作者…, 年份, 定位]
-        authors = [p.strip() for p in pos if p.strip() and not re.match(r"^\d{3,4}$", p.strip())]
-        years = [p.strip() for p in pos if re.match(r"^\d{3,4}[a-z]?$", p.strip())]
-        year = years[0] if years else ""
-        extra = named.get("p") or named.get("pp") or named.get("loc") or named.get("page") or ""
-        who = " & ".join(authors)
-        paren = n not in ("harvtxt", "harv")
-        return _harv_cite(who, year, extra, paren)
+    if n in HARV_TEMPLATES:
+        return harv_cite(n, pos, named, ctx)
 
     # ---- 文献条目 -----------------------------------------------------------
     if n.startswith("cite ") or n in ("citation", "cite"):
         return fmt_citation(pos, named)
+
+    # ---- 在线百科条目（MathWorld / EoM）：本身就是外链，不能丢 -----------------
+    if n == "mathworld":
+        t_ = clean_field(named.get("title") or (pos[0] if pos else ""))
+        u = (named.get("urlname") or named.get("id") or "").strip().replace(" ", "")
+        if u:
+            link = "https://mathworld.wolfram.com/%s.html" % urllib.parse.quote(u, safe="/.")
+            return "Weisstein, Eric W. [%s](%s), MathWorld." % (t_ or u, link)
+        return "Weisstein, Eric W. %s, MathWorld." % t_
+    if n == "eom":
+        t_ = clean_field(named.get("title") or (pos[0] if pos else ""))
+        u = (named.get("id") or named.get("urlname") or "").strip().replace(" ", "")
+        if u:
+            link = "https://encyclopediaofmath.org/wiki/%s" % urllib.parse.quote(u, safe="/.")
+            return "[%s](%s), Encyclopedia of Mathematics." % (t_ or u, link)
+        return "%s, Encyclopedia of Mathematics." % t_
 
     # ---- 排版类 -------------------------------------------------------------
     if n == "nowrap":
@@ -687,6 +918,9 @@ def wiki_inline(text, lang="en", title=None):
 def convert(wikitext, lang="en", title=None):
     ctx = {"unknown": {}, "lang": lang, "title": title}
     text = wikitext
+
+    # 0a. 先把整篇的文献条目建成索引，供 {{harvnb}}/{{harvs}} 等短引用还原
+    ctx["bib"] = build_bibliography(text)
 
     # 0. 去掉注释与分类
     text = COMMENT_RE.sub("", text)
