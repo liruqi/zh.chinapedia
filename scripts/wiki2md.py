@@ -496,6 +496,66 @@ def _space_before_inline_math(line):
     return "".join(out)
 
 
+def escape_mdx_braces(text):
+    r"""转义数学环境之外的 { } 与裸 < 。
+
+    MDX v3 会把正文里的 ``{expr}`` 当作 JS 表达式求值。只要正文残留了没被
+    ``$…$`` 包住的 LaTeX（例如参考文献标题里的 ``\operatorname{li}``），
+    页面就会在运行时抛 ``ReferenceError: li is not defined`` 并白屏。
+
+    数学环境（$$ 块公式、$…$ 行内公式）与行内代码、围栏代码块内部一律不动；
+    合法的 HTML 标签（``<blockquote>``、``<br />``、``</b>``、``<!-- -->``）
+    也不动，只转义后面不跟标签字符的裸 ``<``。
+    """
+    out, in_block, in_fence = [], False, False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        if stripped == "$$":
+            in_block = not in_block
+            out.append(line)
+            continue
+        if in_block:
+            out.append(line)
+            continue
+
+        buf, pos = [], 0
+        for m in INLINE_MATH_RE.finditer(line):
+            buf.append(_escape_mdx_text(line[pos:m.start()]))
+            buf.append(m.group(0))
+            pos = m.end()
+        buf.append(_escape_mdx_text(line[pos:]))
+        out.append("".join(buf))
+    return "\n".join(out)
+
+
+def _escape_mdx_text(seg):
+    """转义一段纯文本（不含数学）里会让 MDX 当 JSX 解析的字符。"""
+    if not seg:
+        return seg
+    buf, in_code = [], False
+    for i, ch in enumerate(seg):
+        if ch == "`":
+            in_code = not in_code
+            buf.append(ch)
+        elif in_code:
+            buf.append(ch)
+        elif ch in "{}":
+            buf.append("\\" + ch)
+        elif ch == "<" and not re.match(r"[A-Za-z/!?]", seg[i + 1:i + 2] or ""):
+            # 后面不跟标签字符的裸 <（如「a < 1」），否则是合法 HTML，原样保留
+            buf.append("\\<")
+        else:
+            buf.append(ch)
+    return "".join(buf)
+
+
 def fix_github_math(text):
     """让行内公式在 GitHub 上也能渲染。
 
@@ -630,6 +690,7 @@ def main(argv=None):
     if args.katex:
         body = escape_dollar_in_urls(body)
         body = fix_github_math(body)
+    body = escape_mdx_braces(body)
     if not body:
         raise SystemExit("模型没有返回正文，已中止")
 

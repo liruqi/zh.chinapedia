@@ -27,6 +27,13 @@
   曾因 CDN 停留在 0.13.24（Docusaurus 官方文档里的旧示例）而版本不匹配。
 - MDX 硬性约束：正文不得出现未转义的 `< >` 与 `{}`；禁止 `<https://…>` 自动链接
   （wiki2md.py 的 `fix_autolinks` 会转成 `[原文](url)`）。`<` 出现在 `$…$` 公式内部是安全的。
+- **最大的坑：MDX 的 `{expr}` 在 `compile()` 阶段不报错，只在页面运行时炸。**
+  只要正文残留没包进 `$…$` 的 LaTeX（如参考文献里的 `\operatorname{li}`），编译产物里
+  就是一个裸标识符，访问页面直接 `ReferenceError: li is not defined` + 白屏。
+  → 所以「MDX COMPILE OK」**不能**作为通过标准，必须跑运行时渲染。
+  → `wiki2md.py` 已有兜底 `escape_mdx_braces()`：把数学环境与行内代码之外的 `{}`
+  转义成 `\{ \}`，裸 `<`（后不跟 `[A-Za-z/!?]`）转义成 `\<`；`<blockquote>`/`<br />`/
+  `<!-- -->`/`<url>` 不受影响。
 
 ## 人工翻译长条目：§ 标记两阶段流水线
 
@@ -53,6 +60,9 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
 - 校验脚本在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`：
   `katexcheck.mjs`（KaTeX 能否渲染）、`mdxtest.mjs`（MDX 编译）、`mathnodes.mjs`（remark-math
   AST：inlineMath / math 计数，查一行式 `$$`）。新条目改完跑这三件套 + 查 CRLF。
+- **必跑第四件套 `r_mdxrun.mjs`**：真正 `eval` 编译产物（stub jsx，不用装 react），
+  抓 `ReferenceError: xxx is not defined`。前三件套全绿但这个炸的情况真实发生过。
+  用法：`node r_mdxrun.mjs <绝对路径.md>`。
 - **从未跑过 `npm install` / `npm run build`**（node_modules 未安装）。若 Docusaurus 未默认开
   remark-gfm，正文里的 GFM 表格需要在 `docusaurus.config.js` 的 `remarkPlugins` 加 `remark-gfm`。
 
