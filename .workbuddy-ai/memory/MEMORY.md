@@ -28,6 +28,34 @@
 - MDX 硬性约束：正文不得出现未转义的 `< >` 与 `{}`；禁止 `<https://…>` 自动链接
   （wiki2md.py 的 `fix_autolinks` 会转成 `[原文](url)`）。`<` 出现在 `$…$` 公式内部是安全的。
 
+## 人工翻译长条目：§ 标记两阶段流水线
+
+LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：
+
+1. `scratch/prep_*.py` 把 wikitext 压成中间表示，链接/公式/引用/脚注全部换成标记：
+   `§L{Target|显示}§`、`§M{行内公式}§`、`§D{块公式}§`、`§H{作者|年}§`、`§S{作者|年|页}§`、
+   `§REF{n}§`、`§X{OEIS id}§`。人工只译纯散文，不碰标记（标记内是英文原文，不会被误译）。
+2. `scratch/build_*.py` 把标记展开回 Markdown，并复用
+   `wiki2md.escape_dollar_in_urls()` + `wiki2md.fix_github_math()`，保证与脚本产出风格一致。
+
+复用过的坑：
+
+- **wikitext 标题层级**：`== X ==` → `## X`（用 `"#" * len(m.group(1))`，**不要 +1**）。
+- **`{{harvs}}` 等模板取参**：先剥掉外层 `{{ }}`，再**只在深度 0 处**按 `|` 切分；
+  深度只由 `{`/`}` 计数（早期版本把 `|` 也算进深度 → 所有引用渲染成空）。
+- 列表用 `1.` 而不是 `#`，否则行首 `#` 被当成 H1。
+- 中文引号：ASCII `"` 前后是中文时批量换成 `“”`。
+- `（英语：X）` 前先占位保护，再补中英文之间的空格，否则 CJK 空格规则会插进括号里。
+- 链接显示文字不要以 `$…$` 开头（`[$L$ 函数]` 很难看），改成 `§L{Target|L 函数}§`。
+
+## 校验
+
+- 校验脚本在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`：
+  `katexcheck.mjs`（KaTeX 能否渲染）、`mdxtest.mjs`（MDX 编译）、`mathnodes.mjs`（remark-math
+  AST：inlineMath / math 计数，查一行式 `$$`）。新条目改完跑这三件套 + 查 CRLF。
+- **从未跑过 `npm install` / `npm run build`**（node_modules 未安装）。若 Docusaurus 未默认开
+  remark-gfm，正文里的 GFM 表格需要在 `docusaurus.config.js` 的 `remarkPlugins` 加 `remark-gfm`。
+
 ## GitHub 渲染公式的坑（.md 在 GitHub 上直接看）
 
 - **行内公式起始 `$` 前必须是空白或行首**。紧跟中文标点（`，。、：（）`）时 GitHub 不渲染，
