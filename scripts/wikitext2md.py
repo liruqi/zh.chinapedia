@@ -292,6 +292,8 @@ def template_sub(name, pos, named, ctx):
         return "$%s/%s$" % (pos[0].strip(), pos[1].strip() if len(pos) > 1 else "1")
     if n == "math":
         body = named.get("1") or (pos[0] if pos else "")
+        # 模板里常写 {{math|''q''}} —— 数学环境内没有斜体，去掉 '' / '''
+        body = re.sub(r"''+", "", body)
         return "$%s$" % body.strip()
     if n == "mvar":
         return "$%s$" % (pos[0].strip() if pos else "")
@@ -464,14 +466,37 @@ def extract_refs(text, ctx):
 
 # --------------------------------------------------------------------------- 数学
 
+def is_display_math(match, text, attrs):
+    """判断 <math> 是行间公式还是行内公式。
+
+    MediaWiki 的约定：
+      * <math display="inline">…</math>            → 行内
+      * <math display="block"> / <math display>    → 行间
+      * 裸 <math>…</math>                          → 独占一行时视为行间，否则行内
+    注意不能只看 attrs 里有没有 "display" 字样：display="inline" 是行内。
+    """
+    a = (attrs or "").strip()
+    if re.search(r'display\s*=\s*["\']?\s*inline', a, re.I):
+        return False
+    if re.search(r"\bdisplay\b", a):
+        return True
+    # 裸 <math>：按是否独占一行来判定（行首的 : / * / # / ; 是缩进和列表标记，不算内容）
+    bol = text.rfind("\n", 0, match.start()) + 1
+    eol = text.find("\n", match.end())
+    if eol == -1:
+        eol = len(text)
+    before = re.sub(r"^[\s:;*#-]*", "", text[bol:match.start()])
+    after = text[match.end():eol].strip()
+    return before == "" and after == ""
+
+
 def extract_math(text):
     """<math> → 占位符，返回 (文本, [(display, latex)])。"""
     store = []
 
     def repl(m):
         attrs, body = m.group(1), m.group(2)
-        display = "block" in attrs or "display" in attrs
-        store.append((display, body.strip()))
+        store.append((is_display_math(m, text, attrs), body.strip()))
         return "\x02MATH%d\x03" % (len(store) - 1)
 
     return MATH_RE.sub(repl, text), store
