@@ -3,6 +3,9 @@
 ## 条目生成
 
 - `scripts/wiki2md.py`：抓非中文维基 wikitext → LLM 翻译 → 写 `docs/{分类}/{条目名}.md`。
+- `scripts/wikitext2md.py`：**纯机械** wikitext → Markdown，**不翻译、不调 LLM**。
+  用于「英文原文镜像站」`D:\SRC\Z\en.chinapedia\`（如 `docs/math/riemann_hypothesis.md`），
+  或作为翻译前的干净中间产物。支持表格/图库/脚注/60+ 模板，`--report` 列未识别模板。
 - 公式风格：**默认 KaTeX**（`$…$` / `$$…$$`，只输出一份 `{条目名}.md`）；
   加 `--no-katex` 才退回行内代码 / 代码块（SYSTEM_PROMPT 第 6 条 `RULE6_KATEX` / `RULE6_CODE`）。
 - KaTeX 模式下脚本会自动做 GitHub 兼容后处理：`escape_dollar_in_urls()` + `fix_github_math()`。
@@ -18,6 +21,11 @@
   这类标记往往比 `[文字](url)` 更多。
 - 脚注标记后面紧跟 `[` 或 `$` 时要补空格，否则 `[^1]$x$` 在 GitHub 上不渲染。
 - `remark-gfm` 不用手动配：`@docusaurus/mdx-loader` 默认依赖并启用它。
+- **`<ref>` → `［n］` 是纯文本，点不动**。wiki2md / 人工翻译会把 wikitext `<ref>` 整理成
+  文末 `## 注释` 的编号列表，正文留全角 `［1］`。用 `scripts/notes2footnotes.py` 接成
+  真脚注：删掉 `## 注释` 整节 → 正文 `［n］`→`[^n]` → 文末补定义；
+  已有脚注定义会整体顺延编号避免冲突。编号与 wikitext `<ref>` 出现顺序一致。
+- 未被引用的脚注定义 remark-gfm 不渲染，留着无害。
 
 ## 中文条目文风
 
@@ -77,6 +85,12 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
   用法：`node r_mdxrun.mjs <绝对路径.md>`。
 - Docusaurus 默认已启用 remark-gfm（`@docusaurus/mdx-loader` 的依赖），**脚注和 GFM 表格
   都能直接用**，不用改 `remarkPlugins`。已用真实构建产物验证过。
+- **更快的一环：`scratch/_render.mjs`**（项目根跑，能用到项目 node_modules）。
+  走 remark-parse → remark-gfm → remark-math → remark-rehype → rehype-katex，
+  再遍历 hast 树统计 katex / katex-display / 脚注引用 / 脚注列表项 / table / 残留 `[^n]`。
+  项目里**没装 rehype-stringify**，所以不要 stringify，直接数节点。几秒钟出结果，
+  日常改动先跑它，只有要验线上产物时才跑 12 分钟的 `npm run build`。
+- `r_bisect.mjs`：二分定位 MDX 编译失败的行（COMPILE ERROR 只说 acorn 报错，不给行号）。
 - **跑构建的完整配方**（node/npm 不在 PATH，先
   `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-2:$PATH"`）：
   1. `npm.cmd install --no-audit --no-fund --registry=https://registry.npmmirror.com`
