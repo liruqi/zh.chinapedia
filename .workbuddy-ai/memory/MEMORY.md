@@ -75,8 +75,17 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
 - **必跑第四件套 `r_mdxrun.mjs`**：真正 `eval` 编译产物（stub jsx，不用装 react），
   抓 `ReferenceError: xxx is not defined`。前三件套全绿但这个炸的情况真实发生过。
   用法：`node r_mdxrun.mjs <绝对路径.md>`。
-- **从未跑过 `npm install` / `npm run build`**（node_modules 未安装）。若 Docusaurus 未默认开
-  remark-gfm，正文里的 GFM 表格需要在 `docusaurus.config.js` 的 `remarkPlugins` 加 `remark-gfm`。
+- Docusaurus 默认已启用 remark-gfm（`@docusaurus/mdx-loader` 的依赖），**脚注和 GFM 表格
+  都能直接用**，不用改 `remarkPlugins`。已用真实构建产物验证过。
+- **跑构建的完整配方**（node/npm 不在 PATH，先
+  `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-2:$PATH"`）：
+  1. `npm.cmd install --no-audit --no-fund --registry=https://registry.npmmirror.com`
+     （默认 registry 在国内极慢，47 分钟都装不完；镜像约 32 分钟。不改动 package-lock.json）
+  2. 构建**必须** `dangerouslyDisableSandbox`，否则写 `.docusaurus/` 会 EPERM
+  3. 全量构建会因 `docs/wow/`（9711 篇魔兽物品页）报 `EMFILE: too many open files`。
+     验证时临时给 docs 插件加 `exclude: ['wow/**']`，跑完务必删掉
+  4. `NODE_OPTIONS=--max-old-space-size=4096`；client 8.3m + server 4.0m，共约 12 分钟
+  5. 产物在 `build/wiki/<分类>/<条目>.html`（不是目录）
 
 ## GitHub 渲染公式的坑（.md 在 GitHub 上直接看）
 
