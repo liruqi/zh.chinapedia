@@ -7,6 +7,18 @@
   加 `--no-katex` 才退回行内代码 / 代码块（SYSTEM_PROMPT 第 6 条 `RULE6_KATEX` / `RULE6_CODE`）。
 - KaTeX 模式下脚本会自动做 GitHub 兼容后处理：`escape_dollar_in_urls()` + `fix_github_math()`。
 
+## 链接与脚注
+
+- **维基链接保持行内**（`[文字](https://xx.wikipedia.org/…)`）；**其他外部链接改成 GFM 脚注**，
+  写法照 `docs/ai/product/openclaw.md`：正文 `…。 [^1] [^2] [^3]`，文末
+  `[^n]: [https://host](url)`。同一 URL 复用同一编号。
+- 用 `scripts/md2footnotes.py` 批量转换（幂等、保 CRLF）。默认只改正文，跳过
+  「注释/参考文献/外部链接/科普读物」这类本身就是链接清单的章节（`--all` 可关掉）。
+- 正文里 wikitext `<ref>` 残留的 `[[7]](url)` 标记也是外链，同样要转成脚注——
+  这类标记往往比 `[文字](url)` 更多。
+- 脚注标记后面紧跟 `[` 或 `$` 时要补空格，否则 `[^1]$x$` 在 GitHub 上不渲染。
+- `remark-gfm` 不用手动配：`@docusaurus/mdx-loader` 默认依赖并启用它。
+
 ## 中文条目文风
 
 - 开头用**中文百科式**写法：`**词条名**（英语：English name），也称为**别名1**、**别名2**，是指……`。
