@@ -145,7 +145,13 @@ DROP_TEMPLATES = {
     "citation needed", "cn", "clarify", "dubious",
     "citation needed span", "fact", "who", "when", "according to whom",
     "clarification needed", "inline cleanup needed", "grammar",
+    # 版面/元信息类，本身没有正文价值
+    "cbignore", "use dmy dates", "use mdy dates", "collapse bottom",
+    "series (mathematics)", "portal bar", "main other",
 }
+
+# 折叠块：只保留它的标题（往往是一句有意义的小标题），内容照常输出
+COLLAPSE_TEMPLATES = {"collapse top", "collapse"}
 
 
 def _join_authors(parts):
@@ -483,6 +489,12 @@ def template_sub(name, pos, named, ctx):
 
     if n in DROP_TEMPLATES:
         return ""
+    if n in COLLAPSE_TEMPLATES:
+        t_ = clean_field(named.get("title") or named.get("1") or (pos[0] if pos else ""))
+        return "\n\n**%s**\n\n" % t_ if t_ else ""
+    if n == "numbered list":
+        items = [p.strip() for p in pos if p.strip()]
+        return "\n\n" + "\n\n".join("1. %s" % it for it in items) + "\n\n" if items else ""
 
     # ---- 短引用（作者-年份） -------------------------------------------------
     if n in HARV_TEMPLATES:
@@ -507,6 +519,39 @@ def template_sub(name, pos, named, ctx):
             link = "https://encyclopediaofmath.org/wiki/%s" % urllib.parse.quote(u, safe="/.")
             return "[%s](%s), Encyclopedia of Mathematics." % (t_ or u, link)
         return "%s, Encyclopedia of Mathematics." % t_
+    if n == "springer":
+        # {{springer|title=Zeta-function|id=p/z099260}} —— Springer 的《数学百科》
+        # 现已迁入 encyclopediaofmath.org，按 title 拼 URL 比按 id 稳
+        t_ = clean_field(named.get("title") or (pos[0] if pos else ""))
+        if t_:
+            link = "https://encyclopediaofmath.org/wiki/%s" % urllib.parse.quote(
+                t_.replace(" ", "_"), safe="/.")
+            return "[%s](%s), Encyclopedia of Mathematics." % (t_, link)
+        return ""
+    if n == "dlmf":
+        # {{dlmf|first=T.M.|last=Apostol|title=Zeta and Related Functions|id=25}}
+        au = " ".join(x for x in (clean_field(named.get("first")),
+                                  clean_field(named.get("last"))) if x).strip()
+        t_ = clean_field(named.get("title") or "")
+        cid = (named.get("id") or "").strip()
+        link = ("https://dlmf.nist.gov/%s" % urllib.parse.quote(cid, safe="/.")
+                if cid else "https://dlmf.nist.gov/")
+        head = (au + ". " if au else "")
+        return "%s[%s](%s), *NIST Digital Library of Mathematical Functions*." % (
+            head, t_ or "DLMF " + cid, link)
+    if n in ("oeis", "oeis2c", "oeislink"):
+        aid = (named.get("id") or named.get("1") or (pos[0] if pos else "")).strip()
+        m = re.match(r"^A?(\d+)$", aid, re.I)
+        if m:
+            aid = "A%06d" % int(m.group(1))     # A058303 的前导 0 不能吃
+            return "[%s](https://oeis.org/%s)" % (aid, aid)
+        return ""
+    if n == "webarchive":
+        u = (named.get("url") or (pos[0] if pos else "")).strip()
+        d = clean_field(named.get("date") or (pos[1] if len(pos) > 1 else ""))
+        if u:
+            return "[Archived%s](%s)" % ((" " + d) if d else " copy", u)
+        return ""
 
     # ---- 排版类 -------------------------------------------------------------
     if n == "nowrap":
@@ -524,10 +569,49 @@ def template_sub(name, pos, named, ctx):
     if n == "math":
         body = named.get("1") or (pos[0] if pos else "")
         # 模板里常写 {{math|''q''}} —— 数学环境内没有斜体，去掉 '' / '''
-        body = re.sub(r"''+", "", body)
-        return "$%s$" % body.strip()
+        body = re.sub(r"''+", "", body).strip()
+        # 整块就是一个 <math>…</math>：直接用它的渲染结果，别套两层 $
+        m = re.fullmatch(r"\x02MATH(\d+)\x03", body)
+        if m and ctx.get("maths"):
+            return render_math(*ctx["maths"][int(m.group(1))])
+        # 数学环境里放不下链接语法：[[1 + 2 + 3 + 4 + ⋯]] → 只留显示文字
+        body = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", body)
+        body = re.sub(r"\[\[([^\]]*)\]\]", r"\1", body)
+        body = math_placeholders_to_latex(body, ctx)
+        return "$%s$" % latex_tidy(body)
     if n == "mvar":
-        return "$%s$" % (pos[0].strip() if pos else "")
+        return "$%s$" % latex_tidy(pos[0].strip() if pos else "")
+    # 上下标小模板：{{isup|''s''}} → ^{s}，{{mset|…}} → \{…\}
+    if n in ("isup", "sup"):
+        b = re.sub(r"''+", "", (pos[0] if pos else "")).strip()
+        b = math_placeholders_to_latex(b, ctx)
+        return "^{%s}" % latex_tidy(b)
+    if n in ("isub", "sub"):
+        b = re.sub(r"''+", "", (pos[0] if pos else "")).strip()
+        b = math_placeholders_to_latex(b, ctx)
+        return "_{%s}" % latex_tidy(b)
+    if n == "su":
+        # {{su|b=下标|p=上标}} —— 上下标同时出现
+        b = re.sub(r"''+", "", named.get("b") or "").strip()
+        p = re.sub(r"''+", "", named.get("p") or "").strip()
+        out = ""
+        if p:
+            out += "^{%s}" % latex_tidy(math_placeholders_to_latex(p, ctx))
+        if b:
+            out += "_{%s}" % latex_tidy(math_placeholders_to_latex(b, ctx))
+        return out
+    if n == "mset":
+        # 集合记号：{{mset|''s'' ∈ C {{!}} Re(''s'') = 1/2}} → \{s \in \C \mid …\}
+        b = re.sub(r"''+", "", named.get("1") or (pos[0] if pos else ""))
+        b = re.sub(r"\{\{\s*!\s*\}\}", r"\\mid", b)
+        b = math_placeholders_to_latex(b.strip(), ctx)
+        return r"\{%s\}" % latex_tidy(b)
+    if n in ("floor", "ceil"):
+        # 裸 LaTeX（不带 $）—— {{floor}} 几乎总是写在 {{math|…}} 里面，
+        # 再包一层 $ 就成了嵌套，KaTeX 直接报错
+        b = re.sub(r"''+", "", named.get("1") or (pos[0] if pos else "")).strip()
+        b = latex_tidy(math_placeholders_to_latex(b, ctx))
+        return (r"\lfloor %s \rfloor" if n == "floor" else r"\lceil %s \rceil") % b
     if n == "pi":
         return r"$\pi$"
     if n == "e":
@@ -652,8 +736,8 @@ def expand_templates(text, ctx, depth=0):
         changed = True
     result = "".join(out)
     if changed and "{{" in result:
-        return expand_templates(result, ctx, depth + 1)
-    return result
+        result = expand_templates(result, ctx, depth + 1)
+    return collapse_nested_math(result) if changed else result
 
 
 # --------------------------------------------------------------------------- 脚注
@@ -733,9 +817,73 @@ def extract_math(text):
     return MATH_RE.sub(repl, text), store
 
 
+def latex_tidy(s):
+    """把数学环境里不该出现的东西换成 KaTeX 认得的写法。
+
+    KaTeX 只吃 LaTeX：wikitext 里的 <sub>/<sup>、{{!}}、{{=}} 这些留在 $…$ 里
+    会直接报 katex-error（整块公式变红）。
+    """
+    if not s:
+        return s
+    s = re.sub(r"\{\{\s*!\s*\}\}", "|", s)
+    s = re.sub(r"\{\{\s*=\s*\}\}", "=", s)
+    s = re.sub(r"\{\{\s*(!|pipe)\s*\}\}", "|", s)
+
+    def wrap(body, sym):
+        body = latex_tidy(body)
+        # 单个字母/数字可以不加花括号（x^2），其它一律加上（x^{n+1}）
+        if len(body) == 1 and (body.isalnum() or body in "+-"):
+            return sym + body
+        return "%s{%s}" % (sym, body)
+
+    s = re.sub(r"<sub\b[^>]*>(.*?)</sub\s*>",
+               lambda m: wrap(m.group(1), "_"), s, flags=re.S | re.I)
+    s = re.sub(r"<sup\b[^>]*>(.*?)</sup\s*>",
+               lambda m: wrap(m.group(1), "^"), s, flags=re.S | re.I)
+    s = re.sub(r"</?(?:br|wbr)\s*/?>", r"\\\\", s, flags=re.I)
+    s = re.sub(r"<[^<>]+>", "", s)          # 兜底：其它 HTML 标签在数学里一律剥掉
+    # LaTeX 的宏参数字符：裸写会报错（KaTeX 直接整块变红）
+    s = re.sub(r"(?<!\\)#", r"\\#", s)
+    s = re.sub(r"(?<!\\)&", r"\\&", s)
+    s = re.sub(r"(?<!\\)%", r"\\%", s)
+    return s
+
+
+def collapse_nested_math(s):
+    """$…$ 里再套一层 $…$ → 合并成一层。
+
+    {{math|Π<sub>p</sub> {{sfrac|p|p − 1}}}} 展开后是 `$Π_{p} $p/p − 1$$`：
+    {{math}} 包一层 $，里面的 {{sfrac}} 又包一层。同一行出现奇数个 $ 就是
+    这种嵌套，把内层的 $ 去掉即可（偶数个是正常的「两段行内公式」）。
+    """
+    out = []
+    for line in s.split("\n"):
+        if "$$" not in line and line.count("$") >= 3 and line.count("$") % 2 == 1:
+            parts = line.split("$")
+            line = parts[0] + "$" + "".join(p.strip() + " " for p in parts[1:-1]).strip() \
+                   + "$" + parts[-1]
+        out.append(line)
+    return "\n".join(out)
+
+
+def math_placeholders_to_latex(s, ctx):
+    """把 \\x02MATHn\\x03 换成裸 LaTeX（不带 $）。
+
+    用于 {{math|…}}、{{mset|…}} 这类本身就处在数学环境里的模板——占位符若按
+    render_math 展开会得到 $…$，套在已有的一层 $…$ 里就是嵌套，KaTeX 直接崩。
+    """
+    def rep(m):
+        store = ctx.get("maths")
+        if not store:
+            return m.group(0)
+        return store[int(m.group(1))][1].strip()
+
+    return re.sub(r"\x02MATH(\d+)\x03", rep, s)
+
+
 def render_math(display, latex, block_wrap=False):
     """display=True 时输出三行 $$…$$；block_wrap=True 额外用空行把它独立成段。"""
-    latex = latex.strip()
+    latex = latex_tidy(latex.strip())
     if display or "\n" in latex:
         body = "$$\n%s\n$$" % latex
         return "\n\n%s\n\n" % body if block_wrap else body
@@ -928,6 +1076,7 @@ def convert(wikitext, lang="en", title=None):
 
     # 1. 保护数学
     text, maths = extract_math(text)
+    ctx["maths"] = maths          # {{math}}/{{mset}} 需要按裸 LaTeX 展开占位符
 
     # 2. 展开模板
     text = expand_templates(text, ctx)
