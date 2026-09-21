@@ -61,6 +61,60 @@
   转义成 `\{ \}`，裸 `<`（后不跟 `[A-Za-z/!?]`）转义成 `\<`；`<blockquote>`/`<br />`/
   `<!-- -->`/`<url>` 不受影响。
 
+## 自托管 Qwen 接口（`https://lms.thaiwen.com/v1`，LM Studio）的两个必开设置
+
+**不开就完全没法用**：模型 `qwen/qwen3.5-9b` 强制走思维链，译一句话要想 150s+ 且
+一个字都不吐。两条一起加才有救（`wiki2md.llm_chat` 已内置）：
+
+1. **`stream: true`** —— 接口前面挂 Cloudflare，源站约 100s 不出首字节就返回
+   **HTTP 524**。非流式请求必然超时；流式 2s 就开始吐 SSE，跑多久都不超时。
+2. **`reasoning_effort: "none"`** —— 唯一真能关掉思维链的参数。
+   实测一句话：默认 150s 截断、reasoning 8377 字符、**0 输出**；
+   加 `none` 后 **2.0s 出首个字、13.2s 出全文、reasoning 0**，译文质量无可见下降。
+
+**无效的那些（都试过，别再试了）**：`chat_template_kwargs:{enable_thinking:false}`
+（静默忽略）、`thinking:{type:"disabled"}`、`reasoning:{enabled:false}`、
+`enable_thinking` 放顶层（反而把 reasoning 顶到 1255 token）、提示词加 `/no_think`
+（直接把模型卡死到 524）、`<arg_key:6124c78e>`（无效）、`reasoning_effort:"minimal"/"low"`
+（照想不误，420s 都没出字）。只有 `"none"` 是开关，`minimal`/`low` 不是。
+
+另外两个坑：
+- **必须带浏览器 User-Agent**：urllib 默认的 `Python-urllib/3.x` 会被 Cloudflare
+  直接 **403**（curl 一直正常，就是这个差别）。
+- 并发 3–4 路能再快 3 倍（17 块 48s vs 串行更久），Cloudflare 不拦。
+
+## 英→中翻译：`scripts/md2zh.py`
+
+`wikitext2md.py` 出英文稿 → `md2zh.py` 只做翻译（不碰 wikitext）。切块时公式块、
+脚注定义、图片、表格原样照抄，只译散文；默认 `reasoning_effort=none`、`--jobs 4`、
+有 `--state` 断点续译。Riemann zeta function（74k 字符 / 220 块）约 10 分钟。
+
+**模型会犯的三个错，脚本里都有兜底**：
+- URL 里的 `_` 被改成空格（`analytic_number_theory` → `analytic_number theory`）
+  → 送译前把 URL 换成 `§U0§` 占位符，译完还原。
+- 把行内链接改写成脚注、还自己编号（跟真脚注撞号，真脚注被顶掉）
+  → 脚注标记也换成 `§F3§`；译完 `fix_footnotes()` 逐行对账：多的删、少的补；
+  译文里凭空出现的 `[^n]:` 定义整行丢掉。占位符用 `§…§` 不要用 `\x01`，
+  控制字符在传输里会被吃掉，模型会把 `§F2§` 写成 `[^F2^]`。
+- 改标题层级（`##` → `#`）→ 以原文 `#` 个数为准强行纠正。
+
+**第四个错（最严重）：标题单独成块 → 整节内容全是编的。**
+空行被当成 verbatim 块，所以每个 chunk 实际就是一个段落，**标题行自己就是一个 chunk**。
+模型收到 `## Euler's product formula` 一行，会「补全」出 27~57 行的虚构内容，
+还自带编造的 `[^1]: 此处为脚注占位符，原封不动照抄。`（把 system prompt 原文都吐出来）。
+对策：
+- 单行为标题 → 走 `HEADING_SYSTEM` 专用提示词，只取一行；
+- **输出行数必须等于输入行数**，不等就重试，最终逐行兜底（`translate_line`）；
+- 缓存命中也要求行数严格相等（写 `>=` 会把幻觉当有效缓存）；
+- 收尾兜底：`[^n]:` 定义行若不是原文逐字复制，一律丢；多出来的行里
+  `[^n]:` / `#` 开头的一律判为幻觉。
+→ **「输入行数 vs 输出行数」是最有效的幻觉探测器**，比看长度比准得多。
+排查脚本套路：按 chunk 比行数 + 查输出里有没有中日韩字符（无中文 = 漏译）。
+
+**`_chat_stream` 必须有总时限**：`urlopen(timeout=)` 只管单次 recv，
+服务端隔一会儿发个心跳块就能把连接挂几小时（实测 7.5 小时）。
+已加 `deadline = time.time() + timeout`，读流时超时即抛。
+
 ## 人工翻译长条目：§ 标记两阶段流水线
 
 LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：

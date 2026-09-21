@@ -50,7 +50,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-UA = "zh.chinapedia-wiki2md/1.0 (+https://github.com/liruqi/zh.chinapedia)"
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".wiki2md-cache.json")
 MISSING = object()
 
@@ -411,18 +410,48 @@ def build_user_prompt(lang, title, zh_title, category, glossary, chunk, part, to
     return "\n".join(lines)
 
 
-def llm_chat(cfg, messages, temperature=0.2, timeout=600):
+# Cloudflare 会拦掉 urllib 默认的 "Python-urllib/3.x"，直接 403；装成浏览器才行。
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+
+def llm_chat(cfg, messages, temperature=0.2, timeout=600, reasoning_effort=None,
+             on_text=None):
+    """调用 OpenAI 兼容的 /chat/completions。
+
+    两个「不加就会废掉」的设置，都是在这台自托管 LM Studio 上实测出来的：
+
+    * **stream=True** —— 接口前面挂了 Cloudflare，源站约 100s 不出首字节就返回
+      **HTTP 524**。流式请求 2s 就开始吐 SSE chunk，连接一直活着，跑多久都不超时。
+    * **reasoning_effort="none"** —— Qwen 3.5 默认强制走思维链：实测译一句话要
+      想 150s 以上、一个字都不吐；关掉后 13s 出全文，译文质量没有可见下降。
+      注意 `chat_template_kwargs:{enable_thinking:false}`、`thinking:{type:off}`、
+      提示词里加 `/no_think` 或 `<arg_key:6124c78e>` 在这台服务上**全部无效**
+      （`minimal` / `low` 也还是照想不误），只有这个参数是真开关。
+    """
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
-    payload = {
-        "model": cfg["model"],
-        "messages": messages,
-        "temperature": temperature,
-        "stream": False,
-    }
-    headers = {}
+    if reasoning_effort is None:
+        reasoning_effort = cfg.get("reasoning_effort", "none")
+
+    def build(stream):
+        p = {"model": cfg["model"], "messages": messages,
+             "temperature": temperature, "stream": stream}
+        if reasoning_effort:
+            p["reasoning_effort"] = reasoning_effort
+        return p
+
+    headers = {"User-Agent": UA, "Accept": "application/json"}
     if cfg.get("api_key"):
         headers["Authorization"] = "Bearer %s" % cfg["api_key"]
-    raw = http_post_json(url, payload, headers, timeout=timeout, tries=3)
+
+    if not cfg.get("no_stream", False):
+        try:
+            return _chat_stream(url, build(True), headers, timeout, on_text)
+        except urllib.error.HTTPError:
+            raise
+        except Exception:
+            pass          # 服务端不支持流式 → 退回一次性返回
+    raw = http_post_json(url, build(False), headers, timeout=timeout, tries=3)
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
@@ -430,6 +459,43 @@ def llm_chat(cfg, messages, temperature=0.2, timeout=600):
     if not data.get("choices"):
         raise SystemExit("模型调用失败：%s" % str(data.get("error") or data)[:300])
     return data["choices"][0]["message"]["content"]
+
+
+def _chat_stream(url, payload, headers, timeout, on_text=None):
+    """读 SSE 流，把 delta.content 拼起来；reasoning_content 丢弃。"""
+    hdrs = dict(headers)
+    hdrs["Content-Type"] = "application/json"
+    hdrs["Accept"] = "text/event-stream"
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 headers=hdrs)
+    out = []
+    # urlopen 的 timeout 只管单次 recv。服务端只要隔一会儿发一个心跳块，
+    # 每次 recv 都在超时内成功，连接就能挂几小时（真事：挂了 7.5 小时）。
+    # 所以另外再掐一个总时长。
+    deadline = time.time() + timeout
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            if time.time() > deadline:
+                raise RuntimeError("流式响应超过总时限 %ss" % timeout)
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            if line == "data: [DONE]":
+                break
+            try:
+                d = json.loads(line[5:])
+            except json.JSONDecodeError:
+                continue
+            delta = ((d.get("choices") or [{}])[0].get("delta")) or {}
+            chunk = delta.get("content") or ""
+            if chunk:
+                out.append(chunk)
+                if on_text:
+                    on_text(chunk)
+    text = "".join(out)
+    if not text:
+        raise RuntimeError("流式响应里没有 content")
+    return text
 
 
 def parse_meta(text):
@@ -608,6 +674,8 @@ def resolve_provider(args):
     cfg["base_url"] = (args.base_url or os.environ.get(cfg["base_url_env"]) or cfg["base_url"])
     cfg["model"] = (args.model or os.environ.get(cfg["model_env"]) or cfg["default_model"])
     cfg["api_key"] = args.api_key or os.environ.get(cfg["key_env"]) or ""
+    cfg["reasoning_effort"] = getattr(args, "reasoning_effort", None) or "none"
+    cfg["no_stream"] = bool(getattr(args, "no_stream", False))
     if cfg["need_key"] and not cfg["api_key"]:
         raise SystemExit("缺少 API key：请设置环境变量 %s，或传入 --api-key" % cfg["key_env"])
     if not cfg["api_key"]:
@@ -641,6 +709,11 @@ def main(argv=None):
     ap.add_argument("--no-katex", dest="katex", action="store_false", default=True,
                     help="数学公式不用 KaTeX，改用行内代码 / 代码块表示"
                          "（默认用 KaTeX，GitHub 与站点都能渲染）")
+    ap.add_argument("--reasoning-effort", default=None,
+                    choices=["none", "minimal", "low", "medium", "high"],
+                    help="思维链强度。默认 none —— 翻译任务不需要推理，开着会慢 10 倍以上")
+    ap.add_argument("--no-stream", action="store_true",
+                    help="不用流式响应（仅当服务端不支持 SSE 时才需要）")
     ap.add_argument("--dry-run", action="store_true", help="只输出结果，不写文件")
     ap.add_argument("--no-cache", action="store_true", help="不使用本地接口缓存")
     ap.add_argument("-q", "--quiet", action="store_true")

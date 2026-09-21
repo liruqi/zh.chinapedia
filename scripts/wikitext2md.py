@@ -574,10 +574,16 @@ def template_sub(name, pos, named, ctx):
         m = re.fullmatch(r"\x02MATH(\d+)\x03", body)
         if m and ctx.get("maths"):
             return render_math(*ctx["maths"][int(m.group(1))])
+        body = re.sub(r"\{\{\s*!\s*\}\}", "|", body)
+        # 先展开内层模板。否则 {{math|{{abs|t}} ≥ 2}} 会得到 $$|t|$ ≥ 2$ 这种
+        # 嵌套分隔符，KaTeX 直接整块报错
+        body = expand_templates(body, ctx)
         # 数学环境里放不下链接语法：[[1 + 2 + 3 + 4 + ⋯]] → 只留显示文字
         body = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", body)
         body = re.sub(r"\[\[([^\]]*)\]\]", r"\1", body)
         body = math_placeholders_to_latex(body, ctx)
+        if "$" in body:                      # 内层模板自带的 $…$，去掉后统一包一层
+            body = re.sub(r"\s{2,}", " ", body.replace("$", " ")).strip()
         return "$%s$" % latex_tidy(body)
     if n == "mvar":
         return "$%s$" % latex_tidy(pos[0].strip() if pos else "")
@@ -756,9 +762,14 @@ class Footnotes:
             m = re.search(r'name\s*=\s*"?([^">/]+)"?', attrs, re.I)
             if m:
                 name = m.group(1).strip()
+        # <ref name="X" /> 只是「再次引用」，它常常出现在带内容的 <ref name="X">
+        # 之前。先占位，等后面真正的定义来把内容补上，不然脚注就是空的。
         if name and name in self.by_name:
-            return self.by_name[name]
-        self.items.append((len(self.items) + 1, body))
+            num = self.by_name[name]
+            if body.strip() and not (self.items[num - 1][1] or "").strip():
+                self.items[num - 1][1] = body
+            return num
+        self.items.append([len(self.items) + 1, body])
         num = len(self.items)
         if name:
             self.by_name[name] = num
@@ -841,11 +852,20 @@ def latex_tidy(s):
     s = re.sub(r"<sup\b[^>]*>(.*?)</sup\s*>",
                lambda m: wrap(m.group(1), "^"), s, flags=re.S | re.I)
     s = re.sub(r"</?(?:br|wbr)\s*/?>", r"\\\\", s, flags=re.I)
-    s = re.sub(r"<[^<>]+>", "", s)          # 兜底：其它 HTML 标签在数学里一律剥掉
+    # 兜底：其它 HTML 标签在数学里一律剥掉。只认「< 后紧跟字母或 /」的真标签——
+    # 写成 <[^<>]+> 会把 `D < 0 … D > 0` 这种比较式整段吃掉。
+    s = re.sub(r"</?[A-Za-z][^<>]*>", "", s)
     # LaTeX 的宏参数字符：裸写会报错（KaTeX 直接整块变红）
-    s = re.sub(r"(?<!\\)#", r"\\#", s)
-    s = re.sub(r"(?<!\\)&", r"\\&", s)
-    s = re.sub(r"(?<!\\)%", r"\\%", s)
+    # KaTeX 的 \frac 只吃「单个 token」当参数：\frac1\sqrt{x} 里的 \sqrt 拿不到
+    # 自己的 {x}，报 "Expected group as argument to '\sqrt'"。补成 \frac{1}{\sqrt{x}}
+    s = re.sub(r"\\(?:frac|tfrac|dfrac)(\d)(?=\\)", r"\\frac{\1}", s)
+    s = re.sub(r"(\\(?:frac|tfrac|dfrac)\{[^{}]*\})(\\[a-zA-Z]+\{(?:[^{}]|\{[^{}]*\})*\})",
+               r"\1{\2}", s)
+    # 只转义「真·裸字符」：&#960; / &ge; 是 HTML 实体，转义后 html.unescape 会
+    # 把 \&ge; 变成 \≥，整块公式就废了。& 干脆不动——它在 align/cases 里是
+    # 对齐符，转义反而炸。
+    s = re.sub(r"(?<!\\)#(?![0-9]+;|[A-Za-z]+;)", r"\\#", s)
+    s = re.sub(r"(?<!\\)%(?![0-9]+;|[A-Za-z]+;)", r"\\%", s)
     return s
 
 
