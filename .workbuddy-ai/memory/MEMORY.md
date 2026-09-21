@@ -160,6 +160,14 @@ figcaption 内侧都留空行；alt 用 LaTeX→Unicode 降级后的纯文本
 → 验证 JSX/HTML 结构要用 `scratch/_figcheck.mjs`：`@mdx-js/mdx` compile + eval，
 stub 掉 jsx 工厂后遍历真实元素树。
 
+## 翻译带图的条目：先搬图再翻译，译完核图的数量
+
+`wiki2md.py` 翻译阶段会把 `[[File:…]]` **连同图注一起丢掉**（中文黎曼猜想.md 因此
+一张图都没有，英文源有 6 张）。正确顺序是：
+`wikitext2md` → `wikiimg2r2.py`（搬到 R2）→ `img2figure.py`（figure 块）→ 再翻译。
+译完用 `grep -c '^<figure>'` 对一遍中英两版，数量必须相等。
+中英同一词条的**脚注编号一致**，英文图注里的 `[^n]` 可以直接搬到中文图注。
+
 ## 人工翻译长条目：§ 标记两阶段流水线
 
 LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：
