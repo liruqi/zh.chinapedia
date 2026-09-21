@@ -27,3 +27,34 @@ scammer:
   label: Scammer
   permalink: /scammer
   description: 诈骗犯
+
+openclaw:
+  label: OpenClaw
+  permalink: /openclaw
+  description: OpenClaw 相关文章
+
+seo:
+  label: SEO
+  permalink: /seo
+  description: 搜索与社交卡片优化（meta 标签、X Card 等）
+
+guide:
+  label: Guide
+  permalink: /guide
+  description: 操作指南
+
+self-hosting:
+  label: Self-hosting
+  permalink: /self-hosting
+  description: 在自己的设备上部署
+
+# 中文标签另外占一个 permalink，避免和英文标签撞车
+指南:
+  label: 指南
+  permalink: /guide-zh
+  description: 中文操作指南
+
+自托管:
+  label: 自托管
+  permalink: /self-hosting-zh
+  description: 在自己的设备上部署（中文）
