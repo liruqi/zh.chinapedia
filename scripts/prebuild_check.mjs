@@ -78,9 +78,15 @@ for (const f of files) {
   for (const line of body.split(/\r?\n/)) {
     if (!/^#{1,6}\s/.test(line)) continue;
     // \lt / \gt 是合法写法（TeX 源码里没有裸尖括号），放行
+    // \< \> 是 Markdown 转义，remark 会解析成 text 节点，TOC 里 escapeHtml 成 &lt;，
+    // 实测安全（见 scratch/_tocangle.mjs），同样放行
     const probe = line.replace(/\\lt\b/g, '').replace(/\\gt\b/g, '')
       .replace(/\\le\b/g, '').replace(/\\ge\b/g, '')
+      .replace(/\\[<>]/g, '')
       .replace(/<[a-zA-Z/!][^>]*>/g, ''); // 真正的 HTML 标签不算
+    // 注意：标题里「数学公式内含裸 < >」是真问题——remark-math 的 inlineMath 节点
+    // 走 toHeadingHTMLValue 的 default 分支（toString 不转义），会把裸 < 漏进
+    // TOC 的 dangerouslySetInnerHTML，导致整站构建失败。所以裸 <> 必须继续报。
     if (/[<>]/.test(probe)) {
       note(f, '标题裸尖括号', line.trim().slice(0, 60));
     }

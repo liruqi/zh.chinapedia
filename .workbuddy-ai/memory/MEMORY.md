@@ -187,6 +187,44 @@ KaTeX 渲染失败时**不抛异常、也不加 `katex-error` 类**，而是把�
 `color:#cc0000` / `mathcolor="#cc0000"`。基于 hast 的校验要认这个颜色，
 数 `katex-error` 永远是 0。`_macroscan.mjs` 用 `throwOnError: true` 直接试渲染，不受影响。
 
+## 专有名词译名：查中文维基条目名，不要猜
+
+LLM 译专有名词很不稳：`Riemann's xi function` →「黎曼的 xi 函数」（应为**黎曼ξ函数**），
+`Mellin transform` 留下「Mellin」，`Theta function` 留下「Theta」。
+
+**权威译名 = 中文维基条目名**。用 `scripts/wikiterm.py` 抓：
+`en.wikipedia.org` 的 `prop=langlinks&lllang=zh`（→ `scripts/wiki-zh-terms.json`，已提交）。
+
+    python scripts/wikiterm.py "Riemann xi function"
+    python scripts/wikiterm.py --scan docs/math/ --glossary   # 抽 .md 里所有维基链接
+    python scripts/wikiterm.py --no-wikidata                  # 严格模式
+    python scripts/wikiterm.py --fix-cache                    # 去重 + 重做简繁转换
+
+`scripts/md2zh.py --terms` 会按 chunk 把命中的词条塞进提示词（标题/小节/正文三条路径都注入），
+匹配做了归一化，所以 `Riemann's xi function` 能对上术语表的 `Riemann xi function`。
+
+**三级兜底，质量递减**：langlinks（可靠）> Wikidata 中文标签（机翻/生造多，
+`Andrew Granville → 安德鲁·关维`、`János Pintz → 平茨·亚诺什`）> 没有。
+→ `--no-wikidata` 只要第一级。
+→ **查不到就保留英文原文，绝不生造译名**。踩过：`Tikao Tatsuzawa` 中/日文维基都没条目，
+猜「立川」是错的（立川读 Tachikawa/Tatsukawa，不是 Tatsuzawa），已回退。
+
+**人名默认不进术语表**（`--terms-people` 才保留）：中文译名里的间隔号「·」
+是音译人名的标志，术语名不会带；且项目约定第 7 条允许人名留原文。
+人名（Conrey / Voronin / Hasse / Granville…）和缩写（GRH / GUE）现在都保留原文。
+
+坑：
+- **简繁转换用 `zh.wikipedia.org` 的 `action=parse&variant=zh-cn`，且必须分批（40 条）**。
+  一次塞几百行，parse 返回行数一对不上就整批退回原文，繁体一个都转不掉。
+  `converttitles` 靠不住（不需转换时干脆不返回 converted）。
+- **维基 API 会 429**：批量查询要限速（≥1.2s/次）+ 按 `Retry-After` 退避。
+- **别在 `npm run build` 期间查**：本机网络同时跑构建必 RST（WinError 10054），
+  实测 76 个词条 31 分钟只成功 5 个。
+- 缓存键要**按小写去重**（维基标题大小写等价，扫描会当成两个词）；
+  变体里留「句子式大小写」那个（小写字母最多的）。
+- 改完用「中英混排」正则扫一遍残留：
+  `[\u4e00-\u9fff]\s?([A-Za-z][A-Za-z\-']{2,})\s?[\u4e00-\u9fff]`
+
 ## 人工翻译长条目：§ 标记两阶段流水线
 
 LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：
