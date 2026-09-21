@@ -122,10 +122,19 @@ def page_url(target, lang="en"):
     return url
 
 
-def file_url(target):
-    name = target.split(":", 1)[-1].strip()
-    return "https://commons.wikimedia.org/wiki/File:" + urllib.parse.quote(
-        name.replace(" ", "_"), safe="/")
+def file_url(target, width=1000):
+    """[[File:X|thumb|caption]] → 图片的**真实地址**，不是描述页。
+
+    `/wiki/File:X` 是一个 HTML 描述页，塞进 `<img src>` 必然裂图；
+    `Special:FilePath` 会 302 到 upload.wikimedia.org 上的真文件，
+    带 width 还能拿到 Wikimedia 渲染好的缩略图（SVG / PDF 也适用）。
+
+    注意这只是「能看」：thumb.wikimedia.org 有反盗链，正式发布前要用
+    `scripts/wikiimg2r2.py` 把图搬到 Cloudflare R2（chped 桶）再改链接。
+    """
+    name = target.split(":", 1)[-1].strip().replace(" ", "_")
+    return "https://commons.wikimedia.org/wiki/Special:FilePath/%s?width=%d" % (
+        urllib.parse.quote(name, safe="/"), width)
 
 
 def clean_ws(s):
