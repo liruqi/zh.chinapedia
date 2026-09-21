@@ -24,7 +24,7 @@ const tree = await unified()
   .run(unified().use(remarkParse).use(remarkGfm).use(remarkMath).parse(src));
 
 const cls = (n) => (n.properties && n.properties.className) || [];
-let katex = 0, display = 0, refLinks = 0, fnItems = 0, tables = 0;
+let katex = 0, display = 0, refLinks = 0, fnItems = 0, tables = 0, katexErr = 0;
 let rawText = '';
 visit(tree, (n) => {
   if (n.type !== 'element') {
@@ -34,6 +34,11 @@ visit(tree, (n) => {
   const c = cls(n).join(' ');
   if (c.includes('katex-display')) display++;
   else if (c.includes('katex')) katex++;
+  // KaTeX 出错时不会抛异常，也没有 katex-error 类 —— 它把源码原样渲成
+  // 红色（#cc0000）文本。所以只能靠这个颜色来认。
+  const style = String(n.properties?.style || '');
+  const mcolor = String(n.properties?.mathcolor || '');
+  if (style.includes('#cc0000') || mcolor.includes('#cc0000')) katexErr++;
   if (n.tagName === 'a' && ('dataFootnoteRef' in n.properties || 'data-footnote-ref' in n.properties)) refLinks++;
   if (n.tagName === 'li' && /^user-content-fn-\d+$/.test(String(n.properties.id || ''))) fnItems++;
   if (n.tagName === 'table') tables++;
@@ -45,6 +50,7 @@ const strayRef = (rawText.match(/\[\^\d+\]/g) || []).length;
 console.log('file                 :', FILE);
 console.log('katex elements       :', katex);
 console.log('katex-display        :', display);
+console.log('katex 报错(红色)     :', katexErr);
 console.log('footnote ref links   :', refLinks);
 console.log('footnote list items  :', fnItems);
 console.log('tables               :', tables);
