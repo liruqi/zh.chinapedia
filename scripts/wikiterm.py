@@ -16,10 +16,14 @@
 
 三级兜底
 --------
-  1. en.wikipedia.org 的 `prop=langlinks&lllang=zh` → 中文条目名
-  2. 查不到再走 Wikidata 的 zh / zh-cn / zh-hans 标签与别名
-     （有些条目没有中文版，但 Wikidata 上有中文标签，例如 Hadamard product）
-  3. 都没有 → None，这种只能留给 LLM 音译
+  1. en.wikipedia.org 的 `prop=langlinks&lllang=zh` → 中文条目名（最可靠）
+  2. 查不到再走 Wikidata 的中文标签与别名 —— **质量明显差一档**，
+     Wikidata 的 zh 标签不少是机翻/生造的（Andrew Granville → 安德鲁·关维、
+     János Pintz → 平茨·亚诺什），人名尤其容易翻车。
+     要严格就加 `--no-wikidata`，只认真正存在中文维基条目的译名。
+  3. 都没有 → None。**中文维基没条目的不要生造译名**，保留英文原文更诚实。
+     （踩过：Tikao Tatsuzawa 中/日文维基都没有，猜「立川」是错的——
+      立川读 Tachikawa/Tatsukawa，不是 Tatsuzawa。）
 
 简繁转换
 --------
@@ -218,7 +222,7 @@ def _to_simplified_batch(strings):
     return list(strings)
 
 
-def resolve(titles, cache=None, verbose=True):
+def resolve(titles, cache=None, verbose=True, use_wikidata=True):
     """返回 {英文词条: 中文译名}。查不到的键不出现在结果里。"""
     titles = [t for t in titles if t]
     out = {}
@@ -233,11 +237,14 @@ def resolve(titles, cache=None, verbose=True):
 
     found = langlinks(todo)
     missing = [t for t in todo if t not in found]
-    if missing and verbose:
+    if not missing:
+        return out
+    if not use_wikidata:
+        return out
+    if verbose:
         print("  langlinks 查不到，走 Wikidata 兜底: %d 条" % len(missing),
               file=sys.stderr)
-    if missing:
-        found.update(wikidata_zh(missing))
+    found.update(wikidata_zh(missing))
 
     if found:
         keys = list(found.keys())
@@ -331,6 +338,8 @@ def main(argv=None):
     ap.add_argument("--cache", default=None, help="缓存文件路径")
     ap.add_argument("--fix-cache", action="store_true",
                     help="只整理缓存：键按小写去重、值重做简繁转换，不发新查询")
+    ap.add_argument("--no-wikidata", action="store_true",
+                    help="不走 Wikidata 兜底，只认有中文维基条目的译名（更严格）")
     args = ap.parse_args(argv)
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -360,7 +369,7 @@ def main(argv=None):
     print("待解析词条: %d（缓存命中 %d）"
           % (len(ordered), sum(1 for t in ordered if t in cache)),
           file=sys.stderr)
-    result = resolve(ordered, cache=cache)
+    result = resolve(ordered, cache=cache, use_wikidata=not args.no_wikidata)
     print("解析成功: %d，查不到: %d"
           % (len(result), len(ordered) - len(result)), file=sys.stderr)
 

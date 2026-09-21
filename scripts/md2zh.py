@@ -67,7 +67,7 @@ TERMS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 MAX_TERMS = 25  # 提示词里最多塞多少条，多了会把本地模型拖慢
 
 
-def load_terms(path, quiet=False):
+def load_terms(path, quiet=False, people=False):
     if not path or not os.path.exists(path):
         return {}
     try:
@@ -79,8 +79,16 @@ def load_terms(path, quiet=False):
     # 英文名和中文名一样的条目没有意义，丢掉
     data = {k: v for k, v in data.items()
             if v and k and v.strip() and v.strip() != k.strip()}
+    # 默认丢掉人名（中文译名里的间隔号「·」是音译人名的标志）。
+    # 两个原因：一是项目约定第 7 条本来就允许人名留原文；二是术语表里的人名
+    # 多半来自 Wikidata 兜底，质量很差（Andrew Granville → 安德鲁·关维）。
+    # 术语名不会带间隔号（黎曼ξ函数 / 梅林变换 / 互素 / 自然对数）。
+    if not people:
+        data = {k: v for k, v in data.items() if "\u00b7" not in v}
     if not quiet:
-        print("→ 术语表 %s：%d 条" % (os.path.basename(path), len(data)))
+        print("→ 术语表 %s：%d 条%s"
+              % (os.path.basename(path), len(data),
+                 "" if people else "（已过滤人名）"))
     return data
 
 
@@ -356,6 +364,8 @@ def main(argv=None):
                     help="术语表 JSON（scripts/wikiterm.py 生成），"
                          "给空字符串或 --no-terms 可关掉")
     ap.add_argument("--no-terms", action="store_true", help="不使用术语表")
+    ap.add_argument("--terms-people", action="store_true",
+                    help="术语表保留人名译名（默认过滤掉，见 load_terms 注释）")
     ap.add_argument("-q", "--quiet", action="store_true")
     args = ap.parse_args(argv)
 
@@ -379,7 +389,8 @@ def main(argv=None):
     print("→ %s | model=%s | reasoning_effort=%s"
           % (cfg["name"], cfg["model"], cfg["reasoning_effort"]))
 
-    terms = {} if args.no_terms else load_terms(args.terms, quiet=args.quiet)
+    terms = {} if args.no_terms else load_terms(
+        args.terms, quiet=args.quiet, people=args.terms_people)
 
     blocks = split_blocks(lines)
     chunks = pack(blocks, args.chunk)
