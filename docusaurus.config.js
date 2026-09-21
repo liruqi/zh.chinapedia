@@ -8,6 +8,23 @@ import { themes as prismThemes } from 'prism-react-renderer';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
+// MediaWiki 在自己的 MathJax 配置里扩展了一批宏（\C \R \N \Z \Q \F \sgn …），
+// 维基原文大量使用，但 KaTeX 不认识，页面上会渲染成红色 parse error。
+// 这里把它们补上，新导入的条目不用再手工替换。
+// 参考 https://en.wikipedia.org/wiki/Help:Displaying_a_formula
+const katexMacros = {
+  '\\R': '\\mathbb{R}',
+  '\\C': '\\mathbb{C}',
+  '\\N': '\\mathbb{N}',
+  '\\Z': '\\mathbb{Z}',
+  '\\Q': '\\mathbb{Q}',
+  '\\F': '\\mathbb{F}',
+  '\\sgn': '\\operatorname{sgn}',
+  '\\arccot': '\\operatorname{arccot}',
+  '\\arcsec': '\\operatorname{arcsec}',
+  '\\arccsc': '\\operatorname{arccsc}',
+};
+
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 /** @type {import('@docusaurus/types').Config} */
@@ -50,7 +67,7 @@ const config = {
           sidebarPath: './sidebars.js',
           routeBasePath: 'wiki',
           remarkPlugins: [remarkMath],
-          rehypePlugins: [rehypeKatex],
+          rehypePlugins: [[rehypeKatex, { macros: katexMacros }]],
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl: ({ docPath }) => {

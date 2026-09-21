@@ -115,6 +115,26 @@
 服务端隔一会儿发个心跳块就能把连接挂几小时（实测 7.5 小时）。
 已加 `deadline = time.time() + timeout`，读流时超时即抛。
 
+## 图片：必须搬到 Cloudflare R2（chped 桶），不能直接外链维基
+
+`[[File:X|thumb|caption]]` 机械转换出来是 `![caption](…/wiki/File:X)`，
+那是**文件描述页**（HTML），不是图片，必裂图；thumb.wikimedia.org 还有反盗链。
+
+流程（`scripts/wikiimg2r2.py` 一键做完）：
+Commons API 查真实地址 → 下载 → AWS SigV4 PUT 到 R2 → 改写成
+`https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/<key>`（key 形如 `docs/math/X.png`）。
+
+- 凭证在 `scripts/r2.local.json`（**已 gitignore，不提交**）；prod 换凭证用环境变量
+  `R2_ENDPOINT / R2_BUCKET / R2_PUBLIC_BASE / R2_ACCESS_KEY / R2_SECRET_KEY`。
+- 脚本**不依赖 boto3**，自己实现 SigV4（装 boto3 在这台机器上要十几分钟）。
+- 映射缓存 `scripts/wikiimg-map.json` 会提交，重跑同一张图不会重复上传。
+- 坑：主机名是 `commons.wikimedia.org`（不是 wikipedia.org）；
+  SVG/PDF 必须取 `thumburl`（渲染好的 PNG），GIF 反过来要取原图（缩略图会变静止帧）；
+  R2 是路径风格 + region `auto` + canonical URI 不做路径归一化；
+  这边的网络会随机 RST，上传/校验都要重试，**校验用 GET 比字节数，别信单次 HEAD**。
+- `wikitext2md.py` 的 `file_url()` 已改成 `Special:FilePath/<name>?width=1000`，
+  即使没跑 R2 那一步，图也是真能显示的。
+
 ## 人工翻译长条目：§ 标记两阶段流水线
 
 LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：

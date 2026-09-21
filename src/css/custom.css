@@ -29,6 +29,25 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
+/* <figure> / <figcaption>：图片块由 scripts/img2figure.py 生成，
+   样式照维基百科来 —— 图居中，图注小字、灰色、居中。 */
+.markdown figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.markdown figure img {
+  display: block;
+  margin: 0 auto;
+}
+
+.markdown figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--ifm-color-emphasis-700);
+}
+
 /* Footnotes styling like Wikipedia */
 .footnote-ref {
   vertical-align: super;
