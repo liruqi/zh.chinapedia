@@ -173,13 +173,26 @@ stub 掉 jsx 工厂后遍历真实元素树。
 译完用 `grep -c '^<figure>'` 对一遍中英两版，数量必须相等。
 中英同一词条的**脚注编号一致**，英文图注里的 `[^n]` 可以直接搬到中文图注。
 
-## 标题里的裸 `<` / `>` 会让整站构建失败
+## 标题里的裸 `<` / `>` 会让整站构建失败（真凶是「标题内数学公式」）
 
-`## $D < 0$ 时的…` 这种标题，MDX 编译没问题，但 Docusaurus 生成 TOC 时会把
-KaTeX 的 TeX 源码（`<annotation encoding="application/x-tex">` 里那份）**原样插进 HTML**，
-产物里出现未转义的 ` < `，`html-minifier-terser` 直接 Parse Error → **整站构建失败**。
-改写成 `$D \lt 0$` / `$x \gt 0$` 即可（渲染效果一样，源码里没有裸尖括号）。
-所以「`$…$` 里的 `<` 安全」这个旧结论**只覆盖 MDX 编译，不覆盖 TOC→压缩这条链路**。
+实测（调 `toHeadingHTMLValue()` 本身，见 `scratch/_tocangle.mjs`）四种标题：
+
+| 标题 | TOC 输出 | 漏裸 `<` |
+|---|---|---|
+| `## …*D* \< 0`（Markdown 转义） | `… <em>D</em> &lt; 0` | 否 ✅ |
+| `## 裸尖括号 D < 0`（普通文本） | `裸尖括号 D &lt; 0` | 否 ✅ |
+| `## 公式 $D < 0$` | `公式 D < 0` | **是 ⚠** |
+| `## 已转义 \< 与 \>` | `已转义 &lt; 与 &gt;` | 否 ✅ |
+
+机制（之前猜的「KaTeX annotation 原样插入」是错的）：
+`@docusaurus/mdx-loader/src/remark/toc/utils.ts` 的 `toHeadingHTMLValue()` 只显式处理
+`text / heading / inlineCode / emphasis / …`，`inlineMath` 落到 `default: return toString(node)`，
+mdast-util-to-string 原样返回 `D < 0`（连 `$` 都剥掉）、**不转义**；
+TOC 再走 `dangerouslySetInnerHTML` → `html-minifier-terser` Parse Error → **整站构建失败**。
+
+所以：**普通文本和 `\<` 转义都是安全的，只有「标题里的 `$…$` 含裸尖括号」会炸。**
+修法：写成 `$D \lt 0$` / `$x \gt 0$`（渲染一样，源码无裸尖括号）。
+`prebuild_check.mjs` 放行 `\<` `\>`，但裸 `<>` 继续报——正好覆盖公式这一种。
 
 ## KaTeX 报错没有 katex-error 类
 
@@ -255,6 +268,8 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
   - 脚本自己的两个判据别写错：脚注**引用**后面可能紧跟冒号（中文「…[^23]：」），
     不能用 `(?!:)` 区分定义和引用，要先整段抠掉「定义行 + 缩进续行」；
     裸 URL 要加 `(?!\()`，否则 `[url](url)` 这种合法脚注定义会被误报。
+  - **传路径必须传目录，不能传文件**：传文件会在 `readdirSync` 抛 ENOTDIR 后被静默吞掉，
+    输出「预检文件数: 0 / √ 全部通过」——看着像通过，其实一个都没扫。
 - 校验脚本在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`：
   `katexcheck.mjs`（KaTeX 能否渲染）、`mdxtest.mjs`（MDX 编译）、`mathnodes.mjs`（remark-math
   AST：inlineMath / math 计数，查一行式 `$$`）。新条目改完跑这三件套 + 查 CRLF。
