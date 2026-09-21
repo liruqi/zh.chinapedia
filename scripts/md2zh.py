@@ -57,6 +57,79 @@ SYSTEM = """你是资深数学/百科译者，把英文维基百科条目译成�
 TITLE_SYSTEM = "把英文维基百科条目的标题译成简体中文。只输出一个短标题，不要标点、不要解释。"
 
 
+# --------------------------------------------------------------------------- 术语表
+# 模型译专有名词很不稳：Riemann's xi function 会变成「黎曼的 xi 函数」，
+# Mellin transform 会留下「Mellin」，Theta function 留下「Theta」。
+# 中文维基的条目名就是权威译名，用 scripts/wikiterm.py 抓下来存成 JSON，
+# 翻译时按 chunk 挑出命中的词条塞进提示词，让它照着译。
+TERMS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "wiki-zh-terms.json")
+MAX_TERMS = 25  # 提示词里最多塞多少条，多了会把本地模型拖慢
+
+
+def load_terms(path, quiet=False):
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:                             # noqa: BLE001
+        print("术语表加载失败（忽略）: %s" % exc)
+        return {}
+    # 英文名和中文名一样的条目没有意义，丢掉
+    data = {k: v for k, v in data.items()
+            if v and k and v.strip() and v.strip() != k.strip()}
+    if not quiet:
+        print("→ 术语表 %s：%d 条" % (os.path.basename(path), len(data)))
+    return data
+
+
+def norm_en(s):
+    """归一化英文：小写、去掉所有格、非字母数字都变空格。
+
+    这样 "Riemann's xi function" 和术语表里的 "Riemann xi function" 才能对上。
+    """
+    s = s.lower().replace("\u2019", "'")
+    s = re.sub(r"'s\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " " + " ".join(s.split()) + " "
+
+
+def _hits(term, norm_text):
+    """术语（可能多个词）是否出现在文本里；顺带认单复数。"""
+    nt = norm_en(term).strip()
+    if not nt:
+        return False
+    for cand in (nt, nt + "s", nt + "es"):
+        if (" " + cand + " ") in norm_text:
+            return True
+    return False
+
+
+def pick_terms(text, terms, limit=MAX_TERMS):
+    """挑出这段文本里真正出现的术语，长词优先（避免被短词抢掉）。"""
+    if not terms:
+        return []
+    norm_text = norm_en(text)
+    hit = [t for t in terms if _hits(t, norm_text)]
+    hit.sort(key=len, reverse=True)
+    return hit[:limit]
+
+
+def terms_block(text, terms):
+    """把命中的术语拼成提示词片段。"""
+    hit = pick_terms(text, terms)
+    if not hit:
+        return ""
+    rows = "\n".join("- %s → %s" % (t, terms[t]) for t in hit)
+    return ("\n\n【术语表】下面这些英文名必须照右边给的中文译名来译，"
+            "不要音译、不要直译、不要自己另起一个译名：\n" + rows)
+
+
+def system_with(text, terms, base=SYSTEM):
+    return base + terms_block(text, terms)
+
+
 # --------------------------------------------------------------------------- 切块
 
 def split_blocks(lines):
@@ -213,10 +286,10 @@ def text_prompt(safe):
     return "翻译成简体中文：\n\n" + safe
 
 
-def translate_line(cfg, line):
+def translate_line(cfg, line, terms=None):
     """逐行翻译兜底：保证一行进、一行出。"""
     try:
-        out = _ask(cfg, SYSTEM, line)
+        out = _ask(cfg, system_with(line, terms), line)
     except Exception:                                    # noqa: BLE001
         return line
     first = [l for l in out.split("\n") if l.strip()]
@@ -225,20 +298,21 @@ def translate_line(cfg, line):
     return first[0]
 
 
-def translate_chunk(cfg, text, tries=3):
+def translate_chunk(cfg, text, tries=3, terms=None):
     lines = text.split("\n")
     n = len(lines)
 
     # 整块只有一个标题 → 走标题专用提示词，绝不让它自由发挥
     if n == 1 and re.match(r"^#{1,6}\s", lines[0]):
         try:
-            out = _ask(cfg, HEADING_SYSTEM,
+            out = _ask(cfg, system_with(lines[0], terms, HEADING_SYSTEM),
                        "只译这个标题，输出一行：\n\n" + lines[0])
         except Exception:                                # noqa: BLE001
             return lines[0]
         got = [l for l in out.split("\n") if l.strip()]
         return got[0] if got else lines[0]
 
+    system = system_with(text, terms)
     safe, urls = protect(text)
     # 小段落不该花 15 分钟。一次卡死的流式请求会白吃整个 timeout，
     # 所以超时随文本长度走，短句给 240s 就够。
@@ -248,7 +322,7 @@ def translate_chunk(cfg, text, tries=3):
         try:
             reply = W.llm_chat(
                 cfg,
-                [{"role": "system", "content": SYSTEM},
+                [{"role": "system", "content": system},
                  {"role": "user", "content": text_prompt(safe)}],
                 temperature=0.2, timeout=tmo)
             out = restore(clean_reply(reply), urls)
@@ -260,7 +334,7 @@ def translate_chunk(cfg, text, tries=3):
         except Exception as exc:                         # noqa: BLE001
             last = exc
     # 兜底：逐行翻译，宁可慢也要 1:1
-    return "\n".join(translate_line(cfg, ln) for ln in lines)
+    return "\n".join(translate_line(cfg, ln, terms) for ln in lines)
 
 
 def main(argv=None):
@@ -278,6 +352,10 @@ def main(argv=None):
     ap.add_argument("--chunk", type=int, default=1400, help="单块字符上限，默认 1400")
     ap.add_argument("--state", help="断点续译的状态文件")
     ap.add_argument("--jobs", type=int, default=4, help="并发请求数，默认 4")
+    ap.add_argument("--terms", default=TERMS_FILE,
+                    help="术语表 JSON（scripts/wikiterm.py 生成），"
+                         "给空字符串或 --no-terms 可关掉")
+    ap.add_argument("--no-terms", action="store_true", help="不使用术语表")
     ap.add_argument("-q", "--quiet", action="store_true")
     args = ap.parse_args(argv)
 
@@ -300,6 +378,8 @@ def main(argv=None):
         no_stream=args.no_stream))
     print("→ %s | model=%s | reasoning_effort=%s"
           % (cfg["name"], cfg["model"], cfg["reasoning_effort"]))
+
+    terms = {} if args.no_terms else load_terms(args.terms, quiet=args.quiet)
 
     blocks = split_blocks(lines)
     chunks = pack(blocks, args.chunk)
@@ -327,7 +407,7 @@ def main(argv=None):
         start, items, text, cached = item
         if cached is not None:
             return start, cached, False
-        return start, translate_chunk(cfg, text), True
+        return start, translate_chunk(cfg, text, terms=terms), True
 
     if args.jobs > 1:
         import concurrent.futures as cf
@@ -411,7 +491,8 @@ def main(argv=None):
         zh_title = ""
         if en_title:
             zh_title = clean_reply(W.llm_chat(
-                cfg, [{"role": "system", "content": TITLE_SYSTEM},
+                cfg, [{"role": "system",
+                       "content": system_with(en_title, terms, TITLE_SYSTEM)},
                       {"role": "user", "content": en_title}],
                 temperature=0.2, timeout=300)).split("\n")[0].strip()
         print("→ 标题: %s → %s" % (en_title, zh_title))
