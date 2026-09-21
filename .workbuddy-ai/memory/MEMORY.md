@@ -52,7 +52,8 @@
   `python -c "urllib.request.urlopen(url) -> hashlib.sha384 -> base64"` 现算。
   曾因 CDN 停留在 0.13.24（Docusaurus 官方文档里的旧示例）而版本不匹配。
 - MDX 硬性约束：正文不得出现未转义的 `< >` 与 `{}`；禁止 `<https://…>` 自动链接
-  （wiki2md.py 的 `fix_autolinks` 会转成 `[原文](url)`）。`<` 出现在 `$…$` 公式内部是安全的。
+  （wiki2md.py 的 `fix_autolinks` 会转成 `[原文](url)`）。
+  **但"`<` 在 `$…$` 里是安全的"只对 MDX 编译成立** —— 见下面「标题里的裸 `<`」。
 - **最大的坑：MDX 的 `{expr}` 在 `compile()` 阶段不报错，只在页面运行时炸。**
   只要正文残留没包进 `$…$` 的 LaTeX（如参考文献里的 `\operatorname{li}`），编译产物里
   就是一个裸标识符，访问页面直接 `ReferenceError: li is not defined` + 白屏。
@@ -167,6 +168,20 @@ stub 掉 jsx 工厂后遍历真实元素树。
 `wikitext2md` → `wikiimg2r2.py`（搬到 R2）→ `img2figure.py`（figure 块）→ 再翻译。
 译完用 `grep -c '^<figure>'` 对一遍中英两版，数量必须相等。
 中英同一词条的**脚注编号一致**，英文图注里的 `[^n]` 可以直接搬到中文图注。
+
+## 标题里的裸 `<` / `>` 会让整站构建失败
+
+`## $D < 0$ 时的…` 这种标题，MDX 编译没问题，但 Docusaurus 生成 TOC 时会把
+KaTeX 的 TeX 源码（`<annotation encoding="application/x-tex">` 里那份）**原样插进 HTML**，
+产物里出现未转义的 ` < `，`html-minifier-terser` 直接 Parse Error → **整站构建失败**。
+改写成 `$D \lt 0$` / `$x \gt 0$` 即可（渲染效果一样，源码里没有裸尖括号）。
+所以「`$…$` 里的 `<` 安全」这个旧结论**只覆盖 MDX 编译，不覆盖 TOC→压缩这条链路**。
+
+## KaTeX 报错没有 katex-error 类
+
+KaTeX 渲染失败时**不抛异常、也不加 `katex-error` 类**，而是把源码原样渲成红色
+`color:#cc0000` / `mathcolor="#cc0000"`。基于 hast 的校验要认这个颜色，
+数 `katex-error` 永远是 0。`_macroscan.mjs` 用 `throwOnError: true` 直接试渲染，不受影响。
 
 ## 人工翻译长条目：§ 标记两阶段流水线
 
