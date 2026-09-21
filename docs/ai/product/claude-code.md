@@ -108,6 +108,16 @@ Claude Code 使用 **Bun** 作为运行时,默认生成 source map 文件。由�
 - **技术栈**:Bun(运行时) + React+Ink(终端 UI) + Zod v4(验证) + ~50 个 slash 命令
 - **懒加载**:OpenTelemetry、gRPC 等重型依赖按需加载
 
+## 延伸阅读
+
+以下是进一步了解 Claude Code 的公开资料：
+
+- freeCodeCamp、《The Claude Code Handbook》[^24]
+- Product Talk、《Claude Code: What It Is and How It's Different》[^25]
+- Leo Godin（Medium）、《Claude Code is Great》[^26]
+- Tech With Tim（YouTube）、《Introducing Claude Code》[^27]
+- YouTube、《Claude Code - Full Tutorial for Beginners》[^28]
+
 ## 脚注
 
 [^1]: Anthropic. (n.d.). [Claude Code Overview](https://code.claude.com/docs/en/overview). Claude Code Documentation.

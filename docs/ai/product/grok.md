@@ -14,10 +14,10 @@ xAI 助手：Grok 是一款旨在“理解宇宙”的 AI 聊天机器人。它�
 自动翻译：已在 X 全球范围内推出，用于消除帖子间的语言边界。
 项目协作：提供 Projects 功能，允许用户上传文件并建立自定义工作区。
 ## 如何使用
-Web 端：直接访问 grok.com。
-移动端：可在 Apple App Store 或 Google Play 下载应用。
+Web 端：直接访问 grok.com[^1]。
+移动端：可在 Apple App Store 或 Google Play 下载应用[^2]。
 X 平台：通常作为 X Premium 或 Premium+ 订阅服务的一部分提供。
-API 服务：开发者可通过 xAI API 平台 调用其推理模型。
+API 服务：开发者可通过 xAI API 平台 调用其推理模型[^3]。
 您是想了解如何订阅 Grok，还是想看它与 ChatGPT 等模型的性能对比？
 Grok 的 G-o-A-T 模式是指什么？
 我想了解 Grok 的 G-o-A-T 模式
