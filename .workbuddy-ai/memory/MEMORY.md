@@ -135,6 +135,31 @@ Commons API 查真实地址 → 下载 → AWS SigV4 PUT 到 R2 → 改写成
 - `wikitext2md.py` 的 `file_url()` 已改成 `Special:FilePath/<name>?width=1000`，
   即使没跑 R2 那一步，图也是真能显示的。
 
+搬完还要走 **`scripts/img2figure.py`**：`![图注](url)` 的图注只躺在 alt 属性里、
+肉眼看不见，且连续图片行会被合并进同一段落并排显示。脚本把它们改写成
+`<figure>` + `<img>` + `<figcaption>图注</figcaption>`（维基百科的原生结构）。
+MDX 要求 **JSX 块的子内容要用空行隔开才会当 markdown 解析**，所以 figure /
+figcaption 内侧都留空行；alt 用 LaTeX→Unicode 降级后的纯文本
+（直接去掉 `$` 会露出 `\zeta` 这种裸 LaTeX）。
+
+## KaTeX 缺 MediaWiki 扩展的宏
+
+维基原文大量用 `\C \R \N \Z \Q \F \sgn` —— 这是 **MediaWiki 在自己 MathJax 配置里
+扩展的宏**，KaTeX 完全不认，页面会渲染成红色 parse error（GitHub 的 MathJax 也不认）。
+两处都要补：`docusaurus.config.js` 里给 rehype-katex 配 `macros`（兜底新导入的条目），
+现存 .md 里换成 `\mathbb{C}` 这类标准写法。
+排查用 `scratch/_macroscan.mjs`（逐个公式试渲染），**要按 display / inline 分别传
+`displayMode`**，否则 `\begin{align}` 会被误报。
+
+## 验证 figure / 图片块必须走真 MDX 管线
+
+`scratch/_render.mjs` 用的是纯 remark（remark-parse + remark-rehype），
+**裸 HTML 会被直接丢掉**（remark-rehype 没开 `allowDangerousHtml`），
+所以拿它验 `<figure>` 会得到 figure=0 的假阴性，而 `<figure>` 里的 img 反而还在
+（因为空行把它切成了独立段落）。
+→ 验证 JSX/HTML 结构要用 `scratch/_figcheck.mjs`：`@mdx-js/mdx` compile + eval，
+stub 掉 jsx 工厂后遍历真实元素树。
+
 ## 人工翻译长条目：§ 标记两阶段流水线
 
 LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 + 人工翻译」两阶段：
