@@ -36,9 +36,40 @@
   text-align: center;
 }
 
+/* 高度上限：像 Riemann-Zeta-Detail.png（1280×2959）这种超长图，按容器宽度
+   铺开会有 1700+ px 高，一张图就吃掉两屏。限高后宽度按原比例自动收缩。 */
 .markdown figure img {
   display: block;
   margin: 0 auto;
+  max-height: 420px;
+  width: auto;
+}
+
+/* 多图并排：维基原文把开篇两张图放在右侧窄栏里，这里改成并排一行，
+   省掉两屏垂直空间。flex-basis 保证窄屏自动回退成上下排列。 */
+.figure-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.figure-row > figure {
+  flex: 1 1 240px;
+  max-width: 340px;
+  margin: 0;
+}
+
+.figure-row > figure img {
+  max-height: 380px;
+}
+
+/* 限高会误伤「竖版大图」（比如论文首页扫描件 500×833，压到 420 只剩 252px 宽，
+   看不清字）。这类图给 figure 加 className="figure-tall" 走宽松上限。 */
+.markdown figure.figure-tall img {
+  max-height: 620px;
 }
 
 .markdown figcaption {
