@@ -36,13 +36,18 @@ MDX 要求：JSX 块的子内容要用空行隔开才会被当作 markdown 解�
 幂等：已经包在 <figure> 里的图片行不会被重复处理。
 """
 import argparse
+import json
 import os
 import re
 import sys
+import urllib.parse
+import urllib.request
 
 # 整行只有一张图片：![alt](url)  或  ![alt](url "title")
 # title 里 "w250" 表示来自 wikitext 的显示宽度，会被转写成 figure 的 max-width
 IMG_LINE_RE = re.compile(r'^!\[(?P<alt>.*)\]\((?P<url>\S+?)(?:\s+"(?P<title>[^"]*)")?\)\s*$')
+
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # alt 是纯文本，公式要降级成能读的字符。直接去掉 $ 会露出 \zeta 这种裸 LaTeX。
 SYMBOL = {
@@ -188,6 +193,170 @@ def refresh_alt(text):
     return FIG_BLOCK_RE.sub(sub, text), n
 
 
+# --------------------------------------------------- 回填 wikitext 里的显示宽度
+# 已经转成 <figure> 的文章拿不到宽度（`250px` 在转换时被丢掉了），
+# 用这个模式回 wikitext 里查一遍，给裸 <figure> 补上 maxWidth。
+FILE_NS_RE = re.compile(r"\[\[\s*(?:File|Image)\s*:", re.I)
+SIZE_RE = re.compile(r"^\s*(\d+)\s*(?:x\s*\d+)?\s*px\s*$", re.I)
+UPRIGHT_RE = re.compile(r"^\s*upright\s*(?:=\s*([\d.]+))?\s*$", re.I)
+DEFAULT_THUMB = 220   # 维基缩略图默认宽度，upright=N 按它折算
+
+
+def split_top_level(inner):
+    """按顶层 | 切分 [[File:…]] 的内部内容。
+
+    不能用正则 `\\|[^\\[\\]]*` 硬切：图注里常带 `[[domain coloring]]` 和
+    `{{cite web|url=…}}`，正则会被内部的 `[` 卡住，整条 `[[File:…]]` 都匹配不上
+    （实测因此漏掉了 Cplot zeta.svg 的 250px）。这里只在 depth 0 处切，
+    depth 由 `[[` / `{{` 计数。
+    """
+    parts, cur, depth, i = [], [], 0, 0
+    while i < len(inner):
+        if inner.startswith("[[", i) or inner.startswith("{{", i):
+            depth += 1
+            cur.append(inner[i:i + 2])
+            i += 2
+            continue
+        if inner.startswith("]]", i) or inner.startswith("}}", i):
+            depth -= 1
+            cur.append(inner[i:i + 2])
+            i += 2
+            continue
+        if inner[i] == "|" and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(inner[i])
+        i += 1
+    parts.append("".join(cur))
+    return parts
+
+
+def iter_wiki_files(text):
+    """逐个产出 (文件名, [参数…])。用括号配对扫描，能扛住嵌套的 [[ ]] / {{ }}。"""
+    for m in FILE_NS_RE.finditer(text):
+        depth, j = 0, m.start()
+        while j < len(text):
+            if text.startswith("[[", j):
+                depth += 1
+                j += 2
+                continue
+            if text.startswith("]]", j):
+                depth -= 1
+                j += 2
+                if depth == 0:
+                    break
+                continue
+            j += 1
+        if depth != 0:
+            continue
+        parts = split_top_level(text[m.start() + 2:j - 2])
+        if parts and parts[0].strip():
+            name = re.sub(r"^\s*(?:File|Image)\s*:\s*", "", parts[0], flags=re.I)
+            yield name.strip(), parts[1:]
+
+
+def wikitext_widths(text):
+    """{wiki 文件名: 显示宽度 px}。只收**显式**给了尺寸的（`250px` / `upright=1.4`）。
+
+    没给尺寸的（裸 `thumb`、裸 `upright`）不写进去 —— 那样会被固定成 220px，
+    反而比现在更小；交给 custom.css 的 max-height 兜底就好。
+    """
+    out = {}
+    for name, args in iter_wiki_files(text):
+        width = None
+        for raw in args:
+            part = raw.strip()
+            sm = SIZE_RE.match(part)
+            if sm:
+                width = int(sm.group(1))
+                break
+            um = UPRIGHT_RE.match(part)
+            # 裸 `upright`（没给倍数）不算显式尺寸：它只是「按默认缩略图宽度」，
+            # 折算成 220px 会把竖版大图（论文首页扫描件）压得看不清字。
+            if um and um.group(1):
+                width = round(DEFAULT_THUMB * float(um.group(1)))
+                break
+        if width and name not in out:
+            out[name] = width
+    return out
+
+
+def load_url_to_file(path=None):
+    """wikiimg-map.json 反向表：R2 图片 URL → wikitext 里的 File 名。
+
+    映射的键形如 "docs/math|1000|Cplot zeta.svg"，值里带 'url'。
+    """
+    path = path or os.path.join(SCRIPTS_DIR, "wikiimg-map.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    out = {}
+    for k, v in data.items():
+        if not isinstance(v, dict) or not v.get("url"):
+            continue
+        parts = k.split("|")
+        if len(parts) >= 3:
+            out[v["url"]] = "|".join(parts[2:])
+    return out
+
+
+def fetch_wikitext_raw(url):
+    """从 en/zh.wikipedia 取原始 wikitext（不依赖 wiki2md，少一层耦合）。"""
+    parsed = urllib.parse.urlparse(url)
+    lang = (parsed.netloc or "en.wikipedia.org").split(".")[0]
+    title = urllib.parse.unquote(parsed.path.rsplit("/wiki/", 1)[-1]).replace("_", " ")
+    api = ("https://%s.wikipedia.org/w/api.php?action=parse&prop=wikitext"
+           "&redirects=1&format=json&formatversion=2&page=%s"
+           % (lang, urllib.parse.quote(title)))
+    req = urllib.request.Request(api, headers={
+        "User-Agent": "zh.chinapedia-img2figure/1.0 (+https://github.com/liruqi/zh.chinapedia)"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.load(resp)
+    return (data.get("parse") or {}).get("wikitext") or ""
+
+
+def load_wikitext(src):
+    """src 可以是本地文件路径，也可以是 wikipedia 条目 URL。"""
+    if re.match(r"^https?://", src):
+        return fetch_wikitext_raw(src)
+    with open(src, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+FIG_OPEN_RE = re.compile(r'^<figure(\s+className="(?P<cls>[^"]*)")?\s*>$')
+
+
+def apply_widths(text, widths, url2file):
+    """给已有的裸 <figure> 补 maxWidth。幂等：已经有 style 的跳过。"""
+    lines = text.replace("\r\n", "\n").split("\n")
+    changed = 0
+    for i, line in enumerate(lines):
+        m = FIG_OPEN_RE.match(line.strip())
+        if not m:
+            continue
+        url = None
+        for j in range(i + 1, min(i + 12, len(lines))):
+            if lines[j].strip().startswith("</figure"):
+                break
+            im = IMG_LINE_RE.match(lines[j].strip())
+            if im:
+                url = im.group("url")
+                break
+        if not url:
+            continue
+        fname = url2file.get(url)
+        width = widths.get(fname) if fname else None
+        if not width:
+            continue
+        cls = ' className="%s"' % m.group("cls") if m.group("cls") else ""
+        lines[i] = '<figure%s style={{"maxWidth": "%dpx"}}>' % (cls, width)
+        changed += 1
+    return "\n".join(lines), changed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -195,14 +364,28 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只报告不写盘")
     ap.add_argument("--refresh-alt", action="store_true",
                     help="只按 figcaption 重算已有 <figure> 的 alt（不重新转换）")
+    ap.add_argument("--from-wikitext", default=None, metavar="PATH_OR_URL",
+                    help="wikitext 文件或 wikipedia 条目 URL：给已有 <figure> "
+                         "回填 wikitext 里写的显示宽度（maxWidth）")
     args = ap.parse_args()
+
+    widths, url2file = {}, {}
+    if args.from_wikitext:
+        wt = load_wikitext(args.from_wikitext)
+        widths = wikitext_widths(wt)
+        url2file = load_url_to_file()
+        print("wikitext 里带显式尺寸的图: %d 张，R2 映射表: %d 条"
+              % (len(widths), len(url2file)), file=sys.stderr)
 
     for p in args.paths:
         with open(p, "rb") as fh:
             raw = fh.read()
         # 统一成 \n 再处理，写盘时再转回 CRLF（仓库是 core.autocrlf=true）
         text = raw.decode("utf-8").replace("\r\n", "\n")
-        if args.refresh_alt:
+        if args.from_wikitext:
+            new, n_img = apply_widths(text, widths, url2file)
+            label = "个 <figure> 补上 maxWidth"
+        elif args.refresh_alt:
             new, n_img = refresh_alt(text)
             label = "重算 alt"
         else:
