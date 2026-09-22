@@ -21,6 +21,8 @@ CASES = [
     ("ก " + "[^12]" + " ข " + "[^3]", "A" + "[^12]" + " B" + "[^3]",
      "ก " + "[^12]" + " ข " + "[^3]", "两位数 → 留"),
     ("ก " + "[^note]" + " ข", "A B", "ก  ข", "非数字标签 → 删"),
+    ("ก ข", "A" + "[^6]" + " B", "ก ข " + "[^6]", "整行漏掉标记 → 补到行尾"),
+    ("ก " + "[^1]", "A" + "[^1]" + " B" + "[^2]", "ก " + "[^1] [^2]", "补的时候留一个空格"),
 ]
 
 fail = 0
@@ -77,5 +79,47 @@ for line, src, want, desc in HEAD_CASES:
     if not ok:
         print("      期望 %r" % want)
 
-print("\n失败 %d / %d" % (fail, len(CASES) + len(LINK_CASES) + len(HEAD_CASES)))
+print()
+
+SRC425 = ("implies that the zeros of the Riemann zeta function are symmetric about "
+          "the real axis. Combining this symmetry with the functional equation")
+ECHO_CASES = [
+    ("implies that the zeros of the Riemann zeta function are symmetric about the "
+     "real axis. → ส่งผลให้ศูนย์ของฟังก์ชันซีตาของรีมันมีความสมมาตรเกี่ยวกับแกนจริง",
+     SRC425,
+     "ส่งผลให้ศูนย์ของฟังก์ชันซีตาของรีมันมีความสมมาตรเกี่ยวกับแกนจริง",
+     "回显原文 + 箭头 → 只留译文"),
+    ("ส่งผลให้ศูนย์ของฟังก์ชันซีตาของรีมันสมมาตร", SRC425,
+     "ส่งผลให้ศูนย์ของฟังก์ชันซีตาของรีมันสมมาตร", "正常译文 → 不动"),
+    ("Edmund Landau", "Edmund Landau", "Edmund Landau", "短专名 → 不动"),
+    ("implies that the zeros", SRC425, "implies that the zeros", "回显后没剩东西 → 不动"),
+]
+for line, src, want, desc in ECHO_CASES:
+    got = md2zh.strip_source_echo(line, src)
+    ok = got == want
+    fail += 0 if ok else 1
+    print("%s %-24s %r" % ("✓" if ok else "✗", desc, got[:60]))
+    if not ok:
+        print("      期望 %r" % want[:60])
+
+print()
+
+TH_SCRIPT = md2zh.LANGS["th"]["script"]
+URL_CASES = [
+    ("การใช้ **การหาปริพันธ์โดยการแยกส่วน**[https://en.wikipedia.org/wiki/integration_by_parts]",
+     "การใช้ [**การหาปริพันธ์โดยการแยกส่วน**](https://en.wikipedia.org/wiki/integration_by_parts)",
+     "文字[URL] → [文字](URL)"),
+    ("[https://x.com](https://x.com)", "[https://x.com](https://x.com)", "本来就成链接 → 不动"),
+    ("Thai text [https://x.com]", "Thai text [https://x.com]", "前面不是泰文 → 不动"),
+]
+for line, want, desc in URL_CASES:
+    got = md2zh.repair_bracket_urls(line, TH_SCRIPT)
+    ok = got == want
+    fail += 0 if ok else 1
+    print("%s %-28s %s" % ("✓" if ok else "✗", desc, got[:70]))
+    if not ok:
+        print("      期望 %s" % want[:70])
+
+print("\n失败 %d / %d" % (fail, len(CASES) + len(LINK_CASES) + len(HEAD_CASES)
+                          + len(ECHO_CASES) + len(URL_CASES)))
 sys.exit(1 if fail else 0)

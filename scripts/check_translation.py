@@ -38,9 +38,13 @@ FOOT_REF = re.compile(r"\[\^[^\[\]]+\]")
 FOOT_DEF = re.compile(r"^\[\^\d+\]:")
 BAD_RESIDUE = [
     ("MediaWiki <references", re.compile(r"<references")),
-    ("维基链接 [[", re.compile(r"\[\[")),
-    ("模板 {{", re.compile(r"\{\{")),
     ("<ref> 残留", re.compile(r"<ref\b")),
+]
+# 这些在原稿里本来就合法（`<figure style={{"maxWidth": …}}>` 的双花括号、
+# 公式里的 `\frac{}{}`），所以只比「有没有变多」，不比绝对值。
+COUNT_RESIDUE = [
+    ("维基链接 [[", re.compile(r"\[\[")),
+    ("双花括号 {{", re.compile(r"\{\{")),
 ]
 # 这些行就算没有目标语言文字也算正常（纯符号 / 数字 / 单位 / 缩写）
 IGNORE_LINE = re.compile(r"^[\s\W\d]*$")
@@ -63,8 +67,6 @@ def compare(src_path, out_path, lang="th"):
 
     eq("总行数", len(en), len(th))
     eq("$$ 数", count(re.compile(r"\$\$"), en), count(re.compile(r"\$\$"), th))
-    # 行内公式的 $ 也必须一一对应：模型多写/漏写一个 $ 就会把后面一大段吃进公式里
-    eq("$ 总数", "\n".join(en).count("$"), "\n".join(th).count("$"))
     eq("脚注标记数", len(FOOT_REF.findall("\n".join(en))),
        len(FOOT_REF.findall("\n".join(th))))
     eq("脚注定义数", count(FOOT_DEF, en), count(FOOT_DEF, th))
@@ -73,6 +75,20 @@ def compare(src_path, out_path, lang="th"):
     eq("figcaption 标签数", count(re.compile(r"^</?figcaption"), en),
        count(re.compile(r"^</?figcaption"), th))
     eq("表格行数", count(re.compile(r"^\|"), en), count(re.compile(r"^\|"), th))
+
+    # 行内公式的 $ 必须成对。**逐行比奇偶**：奇数个 $ = 没闭合，会把后面一大段吃进
+    # 公式里（这是真问题）；只是总数少了几个通常是把 `[ $Z$-function]` 写成
+    # `[ฟังก์ชัน Z]` 这种，记一笔即可，不算错。
+    odd = []
+    for i, (a, b) in enumerate(zip(en, th), 1):
+        if a.count("$") % 2 != b.count("$") % 2:
+            odd.append("第 %d 行 $ 不配对：原稿 %d 个 / 译稿 %d 个 → %s"
+                       % (i, a.count("$"), b.count("$"), b.strip()[:60]))
+    problems.extend(odd)
+    n_en, n_th = "\n".join(en).count("$"), "\n".join(th).count("$")
+    if n_en != n_th and not odd:
+        notes.append("$ 总数 %d → %d（逐行奇偶都正常，多半是链接文字里的公式被简化）"
+                     % (n_en, n_th))
 
     # 相邻脚注标记间距
     for i, ln in enumerate(th, 1):
@@ -86,6 +102,13 @@ def compare(src_path, out_path, lang="th"):
         for i, ln in enumerate(th, 1):
             if pat.search(ln):
                 problems.append("第 %d 行残留 %s: %s" % (i, label, ln.strip()[:60]))
+    for label, pat in COUNT_RESIDUE:
+        a = len(pat.findall("\n".join(en)))
+        b = len(pat.findall("\n".join(th)))
+        if b > a:
+            first = next((i for i, ln in enumerate(th, 1) if pat.search(ln)), 0)
+            problems.append("%s 变多：原稿 %d → 译稿 %d（首次出现在第 %d 行）"
+                            % (label, a, b, first))
 
     # 应译行是否真译了
     blocks = md2zh.split_blocks(en)

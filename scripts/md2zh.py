@@ -27,6 +27,7 @@ wikitext。这样英文稿可以先用 wikitext2md.py 机械校一遍，再单�
 
 import argparse
 import collections
+import difflib
 import json
 import os
 import re
@@ -35,6 +36,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wiki2md as W  # noqa: E402  （复用 provider 解析与 llm_chat）
+from fix_footnote_spacing import fix_spacing  # noqa: E402
 
 
 ZH_SYSTEM = """你是资深数学/百科译者，把英文维基百科条目译成简体中文。
@@ -151,6 +153,8 @@ LANGS = {
         # 泰语的人名译法不用间隔号，套这个过滤只会误删术语。
         "people_filter": True,
         "default_title": "未命名",
+        # 目标语言的「文字」正则：判断某段是不是已经译过来了
+        "script": re.compile(r"[\u4e00-\u9fff]"),
     },
     "th": {
         "label": "泰语",
@@ -163,6 +167,7 @@ LANGS = {
         "terms_label": "泰语译名",
         "people_filter": False,
         "default_title": "ไม่มีชื่อ",
+        "script": re.compile(r"[\u0e00-\u0e7f]"),
     },
 }
 
@@ -378,7 +383,7 @@ def restore(text, urls):
 
 
 def fix_footnotes(line, src):
-    """脚注标记以原文为准：多出来的删掉，少了的补上。
+    """脚注标记以原文为准：多出来的删掉，**少了的补上**。
 
     9B 模型会在译文里自己编脚注（编号还跟真脚注撞车，真脚注就被顶掉了），
     所以要逐行对账。
@@ -386,6 +391,10 @@ def fix_footnotes(line, src):
     标签**不限于数字**：实测泰语译文会凭空补一个字面 `[^n]`（页面上原样显示、
     还点不动）。非数字标签在原稿里从来不存在（全站 9729 篇 + en 仓实测 0 处），
     所以 allow 里查不到就必然删除。
+
+    漏掉也要补：模型偶尔整行丢掉脚注标记（泰语 ζ 函数稿实测 2 处）。少一个引用
+    就多一条**没人引用的定义** —— 那种定义不渲染，整节来源列表靠它撑着时会凭空
+    消失。补在行尾（脚注本来就挂在句末），多个按原文顺序追加。
     """
     allow = collections.Counter(re.findall(r"\[\^([^\[\]]+)\]", src))
     used = collections.Counter()
@@ -397,7 +406,38 @@ def fix_footnotes(line, src):
             return "[^%s]" % n
         return ""
 
-    return re.sub(r"\[\^([^\[\]]+)\]", rep, line)
+    line = re.sub(r"\[\^([^\[\]]+)\]", rep, line)
+
+    have = collections.Counter(re.findall(r"\[\^([^\[\]]+)\]", line))
+    missing = []
+    for n in re.findall(r"\[\^([^\[\]]+)\]", src):
+        if have[n] > 0:
+            have[n] -= 1
+        else:
+            missing.append(n)
+    if missing:
+        line = line.rstrip()
+        for n in missing:
+            line = (line + " " if line else "") + "[^%s]" % n
+    return line
+
+
+def strip_source_echo(line, src):
+    """模型偶尔先复述一遍英文原文再给译文：
+
+        implies that the zeros … real axis. → ส่งผลให้ศูนย์ของ…
+
+    判据要窄，只在**译文开头就是原文开头**（连续相同 ≥20 字符，忽略大小写）时才动手，
+    再把回显后面的箭头 / 破折号 / 冒号一起吃掉。剩下的若是空串就原样返回。
+    """
+    if not line or not src or len(src.strip()) < 20:
+        return line
+    sm = difflib.SequenceMatcher(None, line.lower(), src.lower())
+    m = sm.find_longest_match(0, len(line), 0, len(src))
+    if m.a != 0 or m.size < 20:
+        return line
+    rest = re.sub(r"^[\s\u2192\u2014:>\-]+", "", line[m.size:])
+    return rest if rest.strip() else line
 
 
 _MD_LINK_RE = re.compile(r"(?<!!)\[([^\[\]]+)\]\(([^()\s]+)\)")
@@ -446,6 +486,26 @@ def escape_heading_angles(line, src):
     for i in range(0, len(parts), 2):           # 偶数下标 = 公式之外
         parts[i] = re.sub(r"(?<!\\)([<>])", r"\\\1", parts[i])
     return "".join(parts)
+
+
+def repair_bracket_urls(line, target):
+    """模型偶尔把 `[文字](URL)` 写成 `文字[URL]`（圆括号丢了，URL 挪进方括号）。
+
+    这种写法在 Markdown 里就是纯文本，链接失效，`prebuild_check` 也会报「裸 URL 未成
+    链接」。实测泰语 ζ 函数稿 1 处：
+
+        การใช้ **การหาปริพันธ์โดยการแยกส่วน**[https://en.wikipedia.org/wiki/…]
+
+    还原成 `[文字](URL)`。只在方括号里是裸 URL、后面没紧跟 `(`、且前面那段确实是目标
+    语言文字时才动手。
+    """
+    def rep(m):
+        text, url = m.group(1), m.group(2)
+        if not target.search(text):
+            return m.group(0)
+        return "[%s](%s)" % (text, url)
+
+    return re.sub(r"(\S+)\[(https?://[^\]\s]+)\](?!\()", rep, line)
 
 
 def clean_reply(text):
@@ -655,7 +715,10 @@ def main(argv=None):
             if re.match(r"^\[\^[^\[\]]+\]:", line) and not re.match(r"^\[\^[^\[\]]+\]:", src):
                 line = ""                            # 模型自己编的脚注定义，丢掉
             line = fix_footnotes(line, src)
+            line = strip_source_echo(line, src)
+            line = repair_bracket_urls(line, L["script"])
             line = enforce_terms_in_links(line, t_index)
+            line = fix_spacing(line)
             result[idx] = [line]
         if len(parts) > len(items):                  # 模型把一段拆成了多段
             # 多出来的行里，脚注定义和标题一定是幻觉（原文根本没有），直接丢；
