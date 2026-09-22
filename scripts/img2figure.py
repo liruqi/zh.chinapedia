@@ -41,7 +41,8 @@ import re
 import sys
 
 # 整行只有一张图片：![alt](url)  或  ![alt](url "title")
-IMG_LINE_RE = re.compile(r'^!\[(?P<alt>.*)\]\((?P<url>\S+?)(?:\s+"[^"]*")?\)\s*$')
+# title 里 "w250" 表示来自 wikitext 的显示宽度，会被转写成 figure 的 max-width
+IMG_LINE_RE = re.compile(r'^!\[(?P<alt>.*)\]\((?P<url>\S+?)(?:\s+"(?P<title>[^"]*)")?\)\s*$')
 
 # alt 是纯文本，公式要降级成能读的字符。直接去掉 $ 会露出 \zeta 这种裸 LaTeX。
 SYMBOL = {
@@ -136,11 +137,20 @@ def convert(text):
 
         alt_md = m.group("alt")
         url = m.group("url")
+        title = m.group("title")
         plain = strip_md(alt_md)
         if not plain:
             plain = os.path.splitext(os.path.basename(url.split("?")[0]))[0]
 
-        block = ["<figure>", "", "![%s](%s)" % (plain, url), ""]
+        width = None
+        if title:
+            wm = re.match(r'^w(\d+)$', title)
+            if wm:
+                width = int(wm.group(1))
+
+        # MDX/JSX 里 style 必须传对象，不能传字符串
+        style = ' style={{"maxWidth": "%dpx"}}' % width if width else ''
+        block = ["<figure%s>" % style, "", "![%s](%s)" % (plain, url), ""]
         if alt_md.strip():
             block += ["<figcaption>", "", alt_md.strip(), "", "</figcaption>", ""]
         block.append("</figure>")

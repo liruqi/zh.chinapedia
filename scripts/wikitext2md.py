@@ -1022,7 +1022,7 @@ ITALIC_RE = re.compile(r"''(.+?)''", re.S)
 # [[File:…]] 里需要丢掉的排版参数
 FILE_OPTION_RE = re.compile(
     r"^\s*(thumb|thumbnail|frame|frameless|border|left|right|center|none|"
-    r"\d*\.?\d*\s*(px|em|%)|upright\s*(=\s*[\d.]+)?|alt\s*=.*|link\s*=.*|"
+    r"\d*\.?\d*\s*(?:x\s*\d+)?\s*(px|em|%)|upright\s*(=\s*[\d.]+)?|alt\s*=.*|link\s*=.*|"
     r"class\s*=.*|page\s*=\s*\d+|lang\s*=.*)\s*$",
     re.I,
 )
@@ -1058,6 +1058,28 @@ def convert_links(text, lang="en", title=None):
     return "".join(out)
 
 
+def extract_display_width(parts):
+    """从 [[File:…|…]] 的参数中提取显示宽度（px）。
+
+    支持格式：250px、250x300px、upright=1.2（按 220px 基准）。
+    返回整数或 None。
+    """
+    width = None
+    upright = None
+    for p in parts[1:]:
+        p = p.strip()
+        m = re.match(r"^(\d+)\s*(?:x\s*\d+)?\s*px$", p, re.I)
+        if m:
+            width = int(m.group(1))
+            break
+        m = re.match(r"^upright\s*=\s*([\d.]+)$", p, re.I)
+        if m:
+            upright = float(m.group(1))
+    if width is None and upright is not None:
+        width = round(220 * upright)
+    return width
+
+
 def render_wikilink(inner, lang="en", title=None):
     parts = split_args(inner)
     target = parts[0].strip()
@@ -1075,7 +1097,11 @@ def render_wikilink(inner, lang="en", title=None):
     if FILE_NS.match(target):
         caps = [p for p in parts[1:] if p.strip() and not FILE_OPTION_RE.match(p)]
         cap = clean_ws(convert_links(" ".join(caps), lang)) if caps else ""
-        return "![%s](%s)" % (cap or target.split(":", 1)[-1], file_url(target))
+        width = extract_display_width(parts)
+        url = file_url(target)
+        if width:
+            return '![%s](%s "w%d")' % (cap or target.split(":", 1)[-1], url, width)
+        return "![%s](%s)" % (cap or target.split(":", 1)[-1], url)
     if SKIP_LINK_NS.match(target):
         return ""
     label = clean_ws(convert_links(label, lang, title))
