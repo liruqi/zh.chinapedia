@@ -12,6 +12,19 @@ import rehypeKatex from 'rehype-katex';
 // 维基原文大量使用，但 KaTeX 不认识，页面上会渲染成红色 parse error。
 // 这里把它们补上，新导入的条目不用再手工替换。
 // 参考 https://en.wikipedia.org/wiki/Help:Displaying_a_formula
+// docs/wow/capycraft 是 submodule，9711 篇魔兽数据，占全站 99.8%。
+// 每次构建都要把这一万篇塞进 webpack，内存峰值非常高（默认堆会 OOM，
+// 表现是 v8::FatalProcessOutOfMemory + zsh: abort），单次还要 30 分钟起。
+// 改正文/样式时用  npm run build:slim  跳过它，一两分钟出结果；
+// 正式发布不要加这个变量。产物写进 build-slim/，避免误把瘦身版发布出去。
+const SKIP_WOW = process.env.SKIP_WOW === '1';
+const DEFAULT_EXCLUDE = [
+  '**/_*.{js,jsx,ts,tsx,md,mdx}',
+  '**/_*/**',
+  '**/*.test.{js,jsx,ts,tsx}',
+  '**/__tests__/**',
+];
+
 const katexMacros = {
   '\\R': '\\mathbb{R}',
   '\\C': '\\mathbb{C}',
@@ -50,6 +63,9 @@ const config = {
 
   onBrokenLinks: 'log',
 
+  // 瘦身材构建（SKIP_WOW=1）单独输出到 build-slim/，别覆盖正式产物
+  outDir: SKIP_WOW ? 'build-slim' : 'build',
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
@@ -66,6 +82,7 @@ const config = {
         docs: {
           sidebarPath: './sidebars.js',
           routeBasePath: 'wiki',
+          exclude: SKIP_WOW ? ['wow/**', ...DEFAULT_EXCLUDE] : DEFAULT_EXCLUDE,
           remarkPlugins: [remarkMath],
           rehypePlugins: [[rehypeKatex, { macros: katexMacros }]],
           // Please change this to your repo.

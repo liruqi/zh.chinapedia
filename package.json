@@ -7,6 +7,8 @@
     "docusaurus": "docusaurus",
     "start": "docusaurus start --host 0.0.0.0",
     "build": "docusaurus build",
+    "build:slim": "SKIP_WOW=1 docusaurus build",
+    "build:big": "NODE_OPTIONS=--max-old-space-size=8192 docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
