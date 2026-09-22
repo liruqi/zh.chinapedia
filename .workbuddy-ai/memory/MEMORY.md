@@ -34,6 +34,12 @@
    → 服务器上 `npm run build` 对访客没有影响。修复步骤见仓库根 `DEPLOY.md`。
 9. **提交约定**：改动认为已完成就直接提交。凭证只放 `scripts/r2.local.json`（gitignore，不提交）。
 10. **git commit message 别用 `-m` 带反引号**（会被 shell 当命令替换吃掉内容），用 `git commit -F <file>`。
+11. **写日志必须幂等，且绝不和 commit 写进同一条命令**。沙箱升级重试会把整条命令重跑一遍
+    （tool 结果里的 `⚠️ Sandbox bypassed`），`>>` 追加会做两次 → 日志重复；`git commit` 会做两次
+    → 两条同 message 的提交。已经因此产生过两次「去掉重复粘贴的一段」清理提交。
+    → 改文件用 Edit/Write 工具（不走 shell，不会被重试），提交单独一条命令；
+    必须用 shell 追加时先 `grep -q '<块标题>' file || cat >> file`。
+    → 判断提交是否成功**看 `git log`，不要看退出码**（重试那次会报 `nothing to commit`）。
 
 ## 环境
 
