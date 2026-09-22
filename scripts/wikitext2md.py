@@ -1235,6 +1235,10 @@ def convert(wikitext, lang="en", title=None):
     # </?(?:…|e)\b[^>]*>——公式里的 `<e^\gamma` 会被当成标签，吞掉后面一大段正文。
     body = re.sub(r"</?(?:big|li)\b[^>]*>", "", body, flags=re.I)
     body = re.sub(r"<[/]?e\s*>", "", body, flags=re.I)
+    # MediaWiki 的 <references/>（「## References」节里的占位）在 Markdown 里没有意义：
+    # 脚注定义已由 notes2footnotes.py 补在文末。留着会被 MDX 当成未定义组件 →
+    # 运行时 ReferenceError（正是「compile 不报错、只在页面炸」那一类）。
+    body = re.sub(r"</?references\s*/?>", "", body, flags=re.I)
     body = re.sub(r"[ \t]+\n", "\n", body)
     body = re.sub(r"\n{3,}", "\n\n", body)
 

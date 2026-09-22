@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把英文维基词条名解析成中文正式译名（= 中文维基条目名）。
+"""把英文维基词条名解析成目标语言的正式译名（默认中文 = 中文维基条目名，`--lang th` 走泰语）。
 
 为什么需要这一步
 ----------------
@@ -39,7 +39,10 @@ langlinks 给的是中文维基的**源标题**，可能是繁体（「黎曼ξ�
     python scripts/wikiterm.py --scan docs/math/ --glossary   # 输出术语表
     python scripts/wikiterm.py --scan docs/math/ --json       # 输出 JSON
 
-结果缓存在 scripts/wiki-zh-terms.json（会提交，重跑不发请求）。
+    python scripts/wikiterm.py --lang th --scan <en 稿目录>   # 泰语译名（lllang=th）
+
+结果缓存在 scripts/wiki-zh-terms.json（zh）/ scripts/wiki-th-terms.json（th），
+都会提交，重跑不发请求。
 """
 
 import argparse
@@ -56,10 +59,36 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 EN_API = "https://en.wikipedia.org/w/api.php"
 ZH_API = "https://zh.wikipedia.org/w/api.php"
+TH_API = "https://th.wikipedia.org/w/api.php"
 WD_API = "https://www.wikidata.org/w/api.php"
 CACHE_NAME = "wiki-zh-terms.json"
 # 人名子集：只收「en.wikipedia 确实有中文 langlink」的人名，见 verify_people()
 PEOPLE_CACHE_NAME = "wiki-zh-terms-people.json"
+
+# 目标语言 → 查询参数 / 缓存文件 / 是否要做简繁转换。
+# 加一门语言在这里加一项即可；下面的流程代码语言无关。
+LANGS = {
+    "zh": {
+        "label": "中文",
+        "cache": CACHE_NAME,
+        # Wikidata 标签优先级：zh-cn > zh-hans > zh > zh-hant > 别名
+        "wd_langs": ("zh-cn", "zh-hans", "zh", "zh-hant"),
+        # 维基 langlinks 给的是源标题，中文可能是繁体，要转一次简体
+        "simplify": True,
+        "variant_api": ZH_API,
+        # 「·」人名白名单只在中文有意义（音译人名用间隔号）
+        "people": True,
+    },
+    "th": {
+        "label": "泰语",
+        "cache": "wiki-th-terms.json",
+        "wd_langs": ("th",),
+        # 泰语没有简繁变体，不需要转换
+        "simplify": False,
+        "variant_api": None,
+        "people": False,
+    },
+}
 
 # 不是词条、不该进术语表的命名空间
 SKIP_NS = re.compile(
@@ -146,31 +175,32 @@ def _final_title(forward, title, depth=8):
 
 
 # --------------------------------------------------------------------------- 查询
-def langlinks(titles):
-    """en 词条 → 中文条目名（可能繁体）。查不到就不出现在结果里。"""
+def langlinks(titles, lang="zh"):
+    """en 词条 → 目标语言条目名（中文可能是繁体）。查不到就不出现在结果里。"""
     out = {}
     for batch in _chunks(list(titles), BATCH):
         data = api(EN_API, {
-            "action": "query", "prop": "langlinks", "lllang": "zh",
+            "action": "query", "prop": "langlinks", "lllang": lang,
             "lllimit": "500", "titles": "|".join(batch), "redirects": "1",
         })
         query = data.get("query", {})
         forward = _forward_map(query)
-        zh_by_page = {}
+        by_page = {}
         for page in query.get("pages", []):
             ll = page.get("langlinks") or []
-            zh = ll[0].get("title") if ll else None
-            if zh:
-                zh_by_page[page["title"]] = zh
+            name = ll[0].get("title") if ll else None
+            if name:
+                by_page[page["title"]] = name
         for t in batch:
-            zh = zh_by_page.get(_final_title(forward, t))
-            if zh:
-                out[t] = zh
+            name = by_page.get(_final_title(forward, t))
+            if name:
+                out[t] = name
     return out
 
 
-def wikidata_zh(titles):
-    """兜底：走 Wikidata 的中文标签 / 别名。"""
+def wikidata_lang(titles, lang="zh"):
+    """兜底：走 Wikidata 的目标语言标签 / 别名。"""
+    wd_langs = LANGS[lang]["wd_langs"]
     qids = {}
     for batch in _chunks(list(titles), BATCH):
         data = api(EN_API, {
@@ -195,17 +225,17 @@ def wikidata_zh(titles):
     for batch in _chunks(sorted(set(qids.values())), BATCH):
         data = api(WD_API, {
             "action": "wbgetentities", "ids": "|".join(batch),
-            "props": "labels|aliases", "languages": "zh-cn|zh-hans|zh|zh-hant",
+            "props": "labels|aliases", "languages": "|".join(wd_langs),
         })
         for qid, ent in (data.get("entities") or {}).items():
-            # 优先级：zh-cn > zh-hans > zh > zh-hant > 别名
+            # 按 wd_langs 的顺序取，先标签后别名
             cand = []
             labels = ent.get("labels") or {}
-            for lang in ("zh-cn", "zh-hans", "zh", "zh-hant"):
-                if lang in labels:
-                    cand.append(labels[lang]["value"])
-            for lang in ("zh-cn", "zh-hans", "zh", "zh-hant"):
-                for al in (ent.get("aliases") or {}).get(lang, []):
+            for lg in wd_langs:
+                if lg in labels:
+                    cand.append(labels[lg]["value"])
+            for lg in wd_langs:
+                for al in (ent.get("aliases") or {}).get(lg, []):
                     cand.append(al["value"])
             if not cand:
                 continue
@@ -213,6 +243,11 @@ def wikidata_zh(titles):
                 if q == qid and title not in out:
                     out[title] = cand[0]
     return out
+
+
+def wikidata_zh(titles):
+    """向后兼容：中文标签兜底。"""
+    return wikidata_lang(titles, "zh")
 
 
 def to_simplified(strings):
@@ -248,8 +283,8 @@ def _to_simplified_batch(strings):
     return list(strings)
 
 
-def resolve(titles, cache=None, verbose=True, use_wikidata=True):
-    """返回 {英文词条: 中文译名}。查不到的键不出现在结果里。"""
+def resolve(titles, cache=None, verbose=True, use_wikidata=True, lang="zh"):
+    """返回 {英文词条: 目标语言译名}。查不到的键不出现在结果里。"""
     titles = [t for t in titles if t]
     out = {}
     todo = []
@@ -261,7 +296,7 @@ def resolve(titles, cache=None, verbose=True, use_wikidata=True):
     if not todo:
         return out
 
-    found = langlinks(todo)
+    found = langlinks(todo, lang)
     missing = [t for t in todo if t not in found]
     if not missing:
         return out
@@ -270,11 +305,14 @@ def resolve(titles, cache=None, verbose=True, use_wikidata=True):
     if verbose:
         print("  langlinks 查不到，走 Wikidata 兜底: %d 条" % len(missing),
               file=sys.stderr)
-    found.update(wikidata_zh(missing))
+    found.update(wikidata_lang(missing, lang))
 
     if found:
         keys = list(found.keys())
-        simple = to_simplified([found[k] for k in keys])
+        if LANGS[lang]["simplify"]:
+            simple = to_simplified([found[k] for k in keys])
+        else:
+            simple = [found[k] for k in keys]
         for k, v in zip(keys, simple):
             out[k] = v
     return out
@@ -312,7 +350,7 @@ def scan_titles(paths):
     return titles
 
 
-def normalize_cache(data):
+def normalize_cache(data, lang="zh"):
     """整理缓存：键按小写去重，值再过一次简繁转换。
 
     维基标题只有首字母大小写有区别，「Riemann Xi function」和「Riemann xi function」
@@ -331,7 +369,10 @@ def normalize_cache(data):
             dedup[lk] = k
     out = {dedup[lk]: data[dedup[lk]] for lk in dedup}
     keys = list(out)
-    vals = to_simplified([out[k] for k in keys])
+    if LANGS[lang]["simplify"]:
+        vals = to_simplified([out[k] for k in keys])
+    else:
+        vals = [out[k] for k in keys]
     for k, v in zip(keys, vals):
         out[k] = v
     return out
@@ -385,8 +426,10 @@ def save_cache(path, data):
 # --------------------------------------------------------------------------- CLI
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="把英文维基词条名解析成中文正式译名")
+        description="把英文维基词条名解析成目标语言的正式译名（默认中文）")
     ap.add_argument("titles", nargs="*", help="英文词条名（可多个）")
+    ap.add_argument("--lang", choices=sorted(LANGS), default="zh",
+                    help="目标语言（默认 zh；th=泰语）")
     ap.add_argument("--scan", nargs="*", default=[],
                     help="扫描 .md / 目录，抽出里面的 en.wikipedia.org 链接")
     ap.add_argument("--glossary", action="store_true",
@@ -395,27 +438,23 @@ def main(argv=None):
     ap.add_argument("--no-cache", action="store_true", help="忽略缓存，重新查")
     ap.add_argument("--cache", default=None, help="缓存文件路径")
     ap.add_argument("--fix-cache", action="store_true",
-                    help="只整理缓存：键按小写去重、值重做简繁转换，不发新查询")
+                    help="只整理缓存：键按小写去重、值重做变体转换，不发新查询")
     ap.add_argument("--verify-people", action="store_true",
                     help="回查缓存里带「·」的人名条目，把确有中文维基条目的写进 "
-                         + PEOPLE_CACHE_NAME + "（md2zh 靠它决定放行哪些人名）")
+                         + PEOPLE_CACHE_NAME + "（md2zh 靠它决定放行哪些人名）。"
+                         "仅 --lang zh 有意义")
     ap.add_argument("--no-wikidata", action="store_true",
-                    help="不走 Wikidata 兜底，只认有中文维基条目的译名（更严格）")
+                    help="不走 Wikidata 兜底，只认有目标语言维基条目的译名（更严格）")
     args = ap.parse_args(argv)
 
     here = os.path.dirname(os.path.abspath(__file__))
-    cache_path = args.cache or os.path.join(here, CACHE_NAME)
+    cache_path = args.cache or os.path.join(here, LANGS[args.lang]["cache"])
     cache = {} if args.no_cache else load_cache(cache_path)
 
-    if args.fix_cache:
-        old = load_cache(cache_path)
-        new = normalize_cache(old)
-        save_cache(cache_path, new)
-        print("缓存整理: %d → %d 条（去重 %d）"
-              % (len(old), len(new), len(old) - len(new)), file=sys.stderr)
-        return 0
-
     if args.verify_people:
+        if not LANGS[args.lang]["people"]:
+            ap.error("--verify-people 只对 --lang zh 有意义"
+                     "（「·」人名白名单是中文专有的）")
         people = verify_people(cache)
         people_path = os.path.join(here, PEOPLE_CACHE_NAME)
         save_cache(people_path, people)
@@ -426,6 +465,14 @@ def main(argv=None):
             new.update(people)
             if new != cache:
                 save_cache(cache_path, new)
+        return 0
+
+    if args.fix_cache:
+        old = load_cache(cache_path)
+        new = normalize_cache(old, args.lang)
+        save_cache(cache_path, new)
+        print("缓存整理: %d → %d 条（去重 %d）"
+              % (len(old), len(new), len(old) - len(new)), file=sys.stderr)
         return 0
 
     wanted = list(args.titles)
@@ -440,10 +487,12 @@ def main(argv=None):
     if not ordered:
         ap.error("没给词条名，也没扫到任何 en.wikipedia.org 链接")
 
-    print("待解析词条: %d（缓存命中 %d）"
-          % (len(ordered), sum(1 for t in ordered if t in cache)),
+    print("目标语言: %s | 待解析词条: %d（缓存命中 %d）"
+          % (LANGS[args.lang]["label"], len(ordered),
+             sum(1 for t in ordered if t in cache)),
           file=sys.stderr)
-    result = resolve(ordered, cache=cache, use_wikidata=not args.no_wikidata)
+    result = resolve(ordered, cache=cache,
+                     use_wikidata=not args.no_wikidata, lang=args.lang)
     print("解析成功: %d，查不到: %d"
           % (len(result), len(ordered) - len(result)), file=sys.stderr)
 
@@ -459,13 +508,16 @@ def main(argv=None):
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     elif args.glossary:
-        print("| 英文 | 中文 |")
+        label = LANGS[args.lang]["label"]
+        miss = "（无%s条目）" % label
+        print("| 英文 | %s |" % label)
         print("| --- | --- |")
         for k in ordered:
-            print("| %s | %s |" % (k, result.get(k, "（无中文条目）")))
+            print("| %s | %s |" % (k, result.get(k, miss)))
     else:
+        miss = "（无%s条目）" % LANGS[args.lang]["label"]
         for k in ordered:
-            print("%-45s → %s" % (k, result.get(k, "（无中文条目）")))
+            print("%-45s → %s" % (k, result.get(k, miss)))
     return 0
 
 
