@@ -58,6 +58,8 @@ EN_API = "https://en.wikipedia.org/w/api.php"
 ZH_API = "https://zh.wikipedia.org/w/api.php"
 WD_API = "https://www.wikidata.org/w/api.php"
 CACHE_NAME = "wiki-zh-terms.json"
+# 人名子集：只收「en.wikipedia 确实有中文 langlink」的人名，见 verify_people()
+PEOPLE_CACHE_NAME = "wiki-zh-terms-people.json"
 
 # 不是词条、不该进术语表的命名空间
 SKIP_NS = re.compile(
@@ -116,6 +118,33 @@ def _chunks(seq, n):
         yield seq[i:i + n]
 
 
+def _forward_map(query):
+    """normalized + redirects → {请求时的名字: 最终页面标题}。
+
+    注意方向：API 给的是 from→to（请求名 → 最终名），早先这里做成了反查
+    （最终名 → 请求名），结果是**两个请求名跳到同一页面时会互相覆盖**
+    ——「Carl Siegel」和「Carl Ludwig Siegel」都指向 Carl Ludwig Siegel 条目，
+    反查表里最终名只留下最后一个请求名，另一个请求名就永远查不到 langlink，
+    被误判成「没有中文条目」。必须正向映射，再逐个请求名去找最终标题。
+    """
+    forward = {}
+    for item in query.get("normalized", []):
+        forward[item["from"]] = item["to"]
+    for item in query.get("redirects", []):
+        forward[item["from"]] = item["to"]
+    return forward
+
+
+def _final_title(forward, title, depth=8):
+    """沿 normalized → redirects 链展开到最终标题（防环）。"""
+    seen = set()
+    while title in forward and title not in seen and depth > 0:
+        seen.add(title)
+        title = forward[title]
+        depth -= 1
+    return title
+
+
 # --------------------------------------------------------------------------- 查询
 def langlinks(titles):
     """en 词条 → 中文条目名（可能繁体）。查不到就不出现在结果里。"""
@@ -126,21 +155,17 @@ def langlinks(titles):
             "lllimit": "500", "titles": "|".join(batch), "redirects": "1",
         })
         query = data.get("query", {})
-        # redirects / normalized：把「请求时的名字」映射回调用方给的原名
-        alias = {}
-        for item in query.get("normalized", []):
-            alias[item["to"]] = item["from"]
-        for item in query.get("redirects", []):
-            alias[item["to"]] = item["from"]
+        forward = _forward_map(query)
+        zh_by_page = {}
         for page in query.get("pages", []):
             ll = page.get("langlinks") or []
-            if not ll:
-                continue
-            zh = ll[0].get("title")
-            if not zh:
-                continue
-            key = alias.get(page["title"], page["title"])
-            out[key] = zh
+            zh = ll[0].get("title") if ll else None
+            if zh:
+                zh_by_page[page["title"]] = zh
+        for t in batch:
+            zh = zh_by_page.get(_final_title(forward, t))
+            if zh:
+                out[t] = zh
     return out
 
 
@@ -153,15 +178,16 @@ def wikidata_zh(titles):
             "titles": "|".join(batch), "redirects": "1",
         })
         query = data.get("query", {})
-        alias = {}
-        for item in query.get("normalized", []):
-            alias[item["to"]] = item["from"]
-        for item in query.get("redirects", []):
-            alias[item["to"]] = item["from"]
+        forward = _forward_map(query)
+        qid_by_page = {}
         for page in query.get("pages", []):
             qid = (page.get("pageprops") or {}).get("wikibase_item")
             if qid:
-                qids[alias.get(page["title"], page["title"])] = qid
+                qid_by_page[page["title"]] = qid
+        for t in batch:
+            qid = qid_by_page.get(_final_title(forward, t))
+            if qid:
+                qids[t] = qid
     if not qids:
         return {}
 
@@ -318,6 +344,38 @@ def load_cache(path):
     return {}
 
 
+def verify_people(cache, verbose=True):
+    """挑出缓存里的人名条目，逐条回查 en.wikipedia 的 langlinks，只留真有中文条目的。
+
+    背景：缓存是 langlinks（可靠）和 Wikidata 中文标签（机翻多）混在一起的，
+    没有记录来源。人名译名里的间隔号「·」在 md2zh.load_terms() 里默认会被过滤掉，
+    结果连「Helmut Hasse → 赫尔穆特·哈斯」这种中文维基真有条目的也被一起丢了。
+    这里用 langlinks 重查一遍当作「来源证明」：查得到 = 中文维基确实有这个条目，
+    译名可信，可以放行；查不到 = 当年是 Wikidata 兜底出来的，继续过滤。
+
+    返回 {英文名: 中文名}，同时把命中的中文名重做一次简繁转换（顺带修缓存）。
+    """
+    people = {k: v for k, v in cache.items() if "\u00b7" in (v or "")}
+    if not people:
+        return {}
+    if verbose:
+        print("回查人名条目: %d 条" % len(people), file=sys.stderr)
+    found = langlinks(list(people))
+    if not found:
+        return {}
+    keys = [k for k in people if k in found]
+    simple = to_simplified([found[k] for k in keys])
+    out = {}
+    for k, zh in zip(keys, simple):
+        # langlinks 返回的是中文维基**源标题**（可能繁体），简繁转换偶尔漏，兜底用缓存值
+        out[k] = zh if zh else people[k]
+    if verbose:
+        dropped = len(people) - len(out)
+        print("人名条目保留 %d 条，丢弃 %d 条（无中文维基条目）"
+              % (len(out), dropped), file=sys.stderr)
+    return out
+
+
 def save_cache(path, data):
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
@@ -338,6 +396,9 @@ def main(argv=None):
     ap.add_argument("--cache", default=None, help="缓存文件路径")
     ap.add_argument("--fix-cache", action="store_true",
                     help="只整理缓存：键按小写去重、值重做简繁转换，不发新查询")
+    ap.add_argument("--verify-people", action="store_true",
+                    help="回查缓存里带「·」的人名条目，把确有中文维基条目的写进 "
+                         + PEOPLE_CACHE_NAME + "（md2zh 靠它决定放行哪些人名）")
     ap.add_argument("--no-wikidata", action="store_true",
                     help="不走 Wikidata 兜底，只认有中文维基条目的译名（更严格）")
     args = ap.parse_args(argv)
@@ -352,6 +413,19 @@ def main(argv=None):
         save_cache(cache_path, new)
         print("缓存整理: %d → %d 条（去重 %d）"
               % (len(old), len(new), len(old) - len(new)), file=sys.stderr)
+        return 0
+
+    if args.verify_people:
+        people = verify_people(cache)
+        people_path = os.path.join(here, PEOPLE_CACHE_NAME)
+        save_cache(people_path, people)
+        print("已写入 %s（%d 条）" % (people_path, len(people)), file=sys.stderr)
+        # 顺带把修正后的译名同步回主缓存
+        if people:
+            new = dict(cache)
+            new.update(people)
+            if new != cache:
+                save_cache(cache_path, new)
         return 0
 
     wanted = list(args.titles)

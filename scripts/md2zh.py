@@ -64,7 +64,25 @@ TITLE_SYSTEM = "把英文维基百科条目的标题译成简体中文。只输�
 # 翻译时按 chunk 挑出命中的词条塞进提示词，让它照着译。
 TERMS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "wiki-zh-terms.json")
+# 人名子集：只收「en.wikipedia 确实有中文 langlink」的人名（wikiterm.py
+# --verify-people 生成）。术语表里带「·」的条目默认全丢，但那样会连
+# 「Helmut Hasse → 赫尔穆特·哈斯」这种中文维基真有条目的也一起丢掉，
+# 于是正文里就留下没译的 Helmut Hasse。这里改用「来源证明」判断。
+PEOPLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "wiki-zh-terms-people.json")
 MAX_TERMS = 25  # 提示词里最多塞多少条，多了会把本地模型拖慢
+
+
+def load_people(path=None):
+    """读人名子集，返回 {英文名} 集合。文件不存在就返回空集（退回全过滤）。"""
+    path = path or PEOPLE_FILE
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return set(json.load(fh))
+    except Exception:                                    # noqa: BLE001
+        return set()
 
 
 def load_terms(path, quiet=False, people=False):
@@ -79,16 +97,21 @@ def load_terms(path, quiet=False, people=False):
     # 英文名和中文名一样的条目没有意义，丢掉
     data = {k: v for k, v in data.items()
             if v and k and v.strip() and v.strip() != k.strip()}
-    # 默认丢掉人名（中文译名里的间隔号「·」是音译人名的标志）。
-    # 两个原因：一是项目约定第 7 条本来就允许人名留原文；二是术语表里的人名
-    # 多半来自 Wikidata 兜底，质量很差（Andrew Granville → 安德鲁·关维）。
+    # 人名（中文译名里带间隔号「·」）默认要过滤：术语表里的人名多半来自
+    # Wikidata 兜底，质量很差（Andrew Granville → 安德鲁·关维）。
+    # 但「过滤人名」不能一刀切 —— 有中文维基条目的（langlinks 来源）是权威译名，
+    # 丢掉只会让正文里留下没译的 Helmut Hasse。所以改成白名单：
+    # 只有出现在 wiki-zh-terms-people.json 里的人名才放行。
     # 术语名不会带间隔号（黎曼ξ函数 / 梅林变换 / 互素 / 自然对数）。
     if not people:
-        data = {k: v for k, v in data.items() if "\u00b7" not in v}
+        allowed = load_people()
+        data = {k: v for k, v in data.items()
+                if "\u00b7" not in v or k in allowed}
     if not quiet:
+        n_people = sum(1 for v in data.values() if "\u00b7" in v)
         print("→ 术语表 %s：%d 条%s"
               % (os.path.basename(path), len(data),
-                 "" if people else "（已过滤人名）"))
+                 "" if people else "（人名只保留 %d 条有中文条目的）" % n_people))
     return data
 
 
