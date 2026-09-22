@@ -58,5 +58,24 @@ for line, want, desc in LINK_CASES:
     if not ok:
         print("      期望 %r" % want)
 
-print("\n失败 %d / %d" % (fail, len(CASES) + len(LINK_CASES)))
+print()
+
+HEAD_CASES = [
+    ('## "ไม่มีจุดซีเกล" สำหรับ *D* < 0', '## "No Siegel zeros" for *D* \\< 0',
+     '## "ไม่มีจุดซีเกล" สำหรับ *D* \\< 0', "标题丢转义 → 补回"),
+    ("## $D < 0$ 的情况", "## $D < 0$ 的情况", "## $D < 0$ 的情况", "公式里的关系符 → 不动"),
+    ("## 正文 a > b 比较", "## Text a \\> b", "## 正文 a \\> b 比较", "裸 > → 转义"),
+    ("## 已经是 \\< 的", "## already \\< ok", "## 已经是 \\< 的", "已转义 → 不动"),
+    ("正文不是标题 < 0", "body < 0", "正文不是标题 < 0", "非标题行 → 不动"),
+    ("## 原文自己就有裸 <", "## bad < src", "## 原文自己就有裸 <", "原文不干净 → 不猜"),
+]
+for line, src, want, desc in HEAD_CASES:
+    got = md2zh.escape_heading_angles(line, src)
+    ok = got == want
+    fail += 0 if ok else 1
+    print("%s %-22s %r" % ("✓" if ok else "✗", desc, got))
+    if not ok:
+        print("      期望 %r" % want)
+
+print("\n失败 %d / %d" % (fail, len(CASES) + len(LINK_CASES) + len(HEAD_CASES)))
 sys.exit(1 if fail else 0)

@@ -427,6 +427,27 @@ def enforce_terms_in_links(line, index):
     return _MD_LINK_RE.sub(rep, line)
 
 
+def escape_heading_angles(line, src):
+    """标题里绝不能出现裸 `<` / `>`，否则**整站构建失败**。
+
+    `toHeadingHTMLValue()` 对 text/heading 会转义，但 TOC 走
+    `dangerouslySetInnerHTML`，`html-minifier-terser` 遇到裸尖括号直接 Parse Error。
+    模型会丢掉原文的转义：原文 `## "No Siegel zeros" for *D* \\< 0` 被译成
+    `## "ไม่มีจุดซีเกล" สำหรับ *D* < 0`（实测）。
+
+    按原文的约束补回来：原文标题里没有裸 `<` `>` 时，译文标题里的裸 `<` `>` 一律转义。
+    只处理 `$…$` **之外**的——公式里的是 LaTeX 关系符，加反斜杠会让 KaTeX 报错。
+    """
+    if not re.match(r"^#{1,6}\s", line):
+        return line
+    if re.search(r"(?<!\\)[<>]", src):          # 原文自己就不干净，不猜
+        return line
+    parts = re.split(r"(\$[^$]*\$)", line)
+    for i in range(0, len(parts), 2):           # 偶数下标 = 公式之外
+        parts[i] = re.sub(r"(?<!\\)([<>])", r"\\\1", parts[i])
+    return "".join(parts)
+
+
 def clean_reply(text):
     """去掉模型偶尔加的 ```markdown 围栏和开场白。"""
     t = text.strip()
@@ -630,6 +651,7 @@ def main(argv=None):
             m = re.match(r"^(#{1,6})\s", src)        # 标题层级以原文为准
             if m:
                 line = re.sub(r"^#{1,6}\s*", m.group(1) + " ", line.strip())
+                line = escape_heading_angles(line, src)
             if re.match(r"^\[\^[^\[\]]+\]:", line) and not re.match(r"^\[\^[^\[\]]+\]:", src):
                 line = ""                            # 模型自己编的脚注定义，丢掉
             line = fix_footnotes(line, src)

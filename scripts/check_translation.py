@@ -63,6 +63,8 @@ def compare(src_path, out_path, lang="th"):
 
     eq("总行数", len(en), len(th))
     eq("$$ 数", count(re.compile(r"\$\$"), en), count(re.compile(r"\$\$"), th))
+    # 行内公式的 $ 也必须一一对应：模型多写/漏写一个 $ 就会把后面一大段吃进公式里
+    eq("$ 总数", "\n".join(en).count("$"), "\n".join(th).count("$"))
     eq("脚注标记数", len(FOOT_REF.findall("\n".join(en))),
        len(FOOT_REF.findall("\n".join(th))))
     eq("脚注定义数", count(FOOT_DEF, en), count(FOOT_DEF, th))
