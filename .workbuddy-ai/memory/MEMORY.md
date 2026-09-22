@@ -165,6 +165,23 @@ figcaption 内侧都留空行；alt 用 LaTeX→Unicode 降级后的纯文本
 → 验证 JSX/HTML 结构要用 `scratch/_figcheck.mjs`：`@mdx-js/mdx` compile + eval，
 stub 掉 jsx 工厂后遍历真实元素树。
 
+## 插图尺寸：R2 上的原图经常超高，必须限高
+
+维基原文把图放在**右侧窄栏**（260/210px），搬进整栏（~750px）就会爆。实测
+`Riemann-Zeta-Detail.png` 是 **1280×2959**，按栏宽铺开 1734px 高，一张图吃掉两屏。
+查尺寸不用下全图：PNG 读 IHDR 的 `d[16:24]`；JPEG 扫 `FFC0/FFC1/FFC2` 段
+（段内偏移 5 是大端 `height,width`）。记得带浏览器 UA。
+
+`src/css/custom.css` 里三个约定：
+
+- `.markdown figure img { max-height: 420px; width: auto }` —— **全局兜底**，
+  替换元素限高时宽度按原比例自动收缩，不会变形。
+- `.figure-row` —— 多图并排（flex + wrap，`> figure { flex:1 1 240px; max-width:340px }`，
+  行内限高 380px），窄屏自动回退上下排列。用法：把几个 `<figure>` 包进
+  `<div className="figure-row">`，MDX 里直接子元素就是 figure，不会漏文本节点。
+- `figure className="figure-tall"` —— 逃生口，限高放宽到 620px。
+  竖版大图（如论文首页扫描件 500×833）被 420 压到只剩 252px 宽、字看不清时用。
+
 ## 翻译带图的条目：先搬图再翻译，译完核图的数量
 
 `wiki2md.py` 翻译阶段会把 `[[File:…]]` **连同图注一起丢掉**（中文黎曼猜想.md 因此
