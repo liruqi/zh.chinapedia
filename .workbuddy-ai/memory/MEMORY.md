@@ -316,8 +316,15 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
        （正式全量构建）。崩溃栈是 `v8::FatalProcessOutOfMemory` + `Runtime_MapGrow`
        而不是 EMFILE 时，就是堆不够 —— 裸 `npm run build` 用默认堆必挂。
        数字别超过物理内存，否则换页更慢。
-  4. 全量：client ~24m + server ~7m + 9711 页落盘；不带 wow 时 client 8.3m + server 4.0m，约 12 分钟
-  5. 产物在 `build/wiki/<分类>/<条目>.html`（不是目录）
+  4. 全量：client ~24m + server ~7m + 9711 页落盘；不带 wow 时 client 8.3m + server 4.0m，约 12 分钟。
+     有 webpack 持久化缓存后第二次构建能到 server 1.5m + client 9.5m
+  5. **堆上限直接从 GC 日志读**：`Mark-Compact (reduce) 3870.7 (4099.5) MB` 里括号中
+     的数就是上限。`3870.7 -> 3870.7` 表示一轮 GC 什么都没回收到（真的不够，不是泄漏）。
+     **4096 不够，8192 才够**。别把数字设得超过物理内存。
+  6. 治本：装 `@docusaurus/faster` 后 `npm run build:faster`
+     （`future.experimental_faster` → Rspack + SWC）。仓库里的开关是
+     `process.env.FASTER === '1'`，**没装包时默认关闭**，不会拖累现有构建。
+  7. 产物在 `build/wiki/<分类>/<条目>.html`（不是目录）
   6. `exclude` 会**覆盖**插件默认值，所以 config 里写成 `['wow/**', ...DEFAULT_EXCLUDE]`；
      顶层已有 `onBrokenLinks: 'log'`，别再在 docs 插件里设 `'throw'`，会把 log 变成中断。
 
