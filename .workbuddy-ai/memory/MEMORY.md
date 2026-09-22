@@ -3,14 +3,12 @@
 中文维基翻译站（Docusaurus 3.10，`docs/` 下 ~9729 篇，其中 `docs/wow/` 9711 篇）。
 英文镜像 `D:\SRC\Z\en.chinapedia\`（纯内容仓库，无构建工具链）。
 
-## 详细参考（按需读取，不要凭记忆猜）
+## 详细参考（**不自动注入**，做对应工作时先 Read 对应文件，不要凭记忆猜）
 
 | 文件 | 内容 |
 |---|---|
-| `memory/ref-wiki-pipeline.md` | 条目生成脚本、链接/脚注、文风、LLM 翻译四错、§ 两阶段人工流水线 |
-| `memory/ref-images.md` | R2 搬图、`img2figure.py`、插图限高与 `figure-row`、wikitext 宽度保留 |
-| `memory/ref-build.md` | MDX/KaTeX 坑、`npm run check` 校验、完整构建配方、部署现状 |
-| `memory/ref-terms.md` | 专有名词译名、人名白名单、wikiterm.py |
+| `.workbuddy-ai/notes/ref-pipeline.md` | 脚本分工、链接/脚注（含相邻标记间距）、文风、多语言化、LLM 翻译四错、§ 两阶段人工流水线、译名与人名白名单 |
+| `.workbuddy-ai/notes/ref-site.md` | MDX/KaTeX 坑、`npm run check` 校验、完整构建配方、部署现状、图片 R2 与插图限高 |
 
 ## 必须时刻记住的硬约束
 
@@ -40,6 +38,9 @@
     → 改文件用 Edit/Write 工具（不走 shell，不会被重试），提交单独一条命令；
     必须用 shell 追加时先 `grep -q '<块标题>' file || cat >> file`。
     → 判断提交是否成功**看 `git log`，不要看退出码**（重试那次会报 `nothing to commit`）。
+12. **`memory/` 目录是每次会话整体自动注入的**（不只是 MEMORY.md）。细节笔记一律放
+    `.workbuddy-ai/notes/`，**别放回 `memory/`**：放回去会把注入预算撑爆、内容被截断，
+    等于白写（踩过一次：MEMORY.md + 4 个 ref-*.md ≈ 16 KB 被截断）。
 
 ## 环境
 
