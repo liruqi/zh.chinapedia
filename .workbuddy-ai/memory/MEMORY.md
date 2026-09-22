@@ -119,6 +119,20 @@ JPEG 扫 `FFC0/FFC1/FFC2` 段（偏移 +5 是大端 `height,width`）。带浏�
   窄屏自动回退上下排列。用法：把几个 `<figure>` 包进 `<div className="figure-row">`。
 - `figure className="figure-tall"` —— 逃生口，限高放宽到 620px。竖版大图（论文首页扫描件 500×833）用。
 
+**wikitext 里的显示宽度要保留**：`[[File:X|thumb|250px|…]]` 的 `250px`（以及 `upright=1.4`
+按 220px 基准折算）以前在转换时被丢掉，图片按整栏铺开。现在：
+
+- `wikitext2md.py` 的 `extract_display_width()` 把宽度编码成 markdown 图片 title `"w250"`；
+  `FILE_OPTION_RE` 也要能匹配 `NxMpx`，否则尺寸参数会漏进图注。
+- `img2figure.py` 解析 `wN` 并写成 `<figure style={{"maxWidth": "Npx"}}>`。
+  **MDX 里 `style="字符串"` 会在 SSR 报 `The style prop expects a mapping…`，必须传对象。**
+- 已经转好的文章用 `img2figure.py --from-wikitext <wikitext 文件或 wikipedia URL>`
+  回填（幂等，已有 `style=` 的跳过）。它靠 `wikiimg-map.json` 把 R2 URL 反查回 File 名。
+- **裸 `thumb` / 裸 `upright` 不加约束**：折算成 220px 反而比现在更小，交给 max-height 兜底。
+- 取 `[[File:…]]` 必须用**括号配对扫描**，不能用 `\|[^\[\]]*` 这类正则：图注里常带
+  `[[domain coloring]]`、`{{cite web|url=…}}`，正则会被内部的 `[` 卡住，整条都匹配不上
+  （实测漏掉 `Cplot zeta.svg` 的 250px）。
+
 容器的类名是 `theme-doc-markdown markdown`（`grep 'class="markdown"'` 会漏，要 grep 全串）。
 
 ## 翻译带图的条目：先搬图再翻译
@@ -151,7 +165,20 @@ JPEG 扫 `FFC0/FFC1/FFC2` 段（偏移 +5 是大端 `height,width`）。带浏�
 
 **三级兜底，质量递减**：langlinks（可靠）> Wikidata 中文标签（机翻多：`Andrew Granville → 安德鲁·关维`）
 > 没有。**查不到就保留英文，绝不生造**（踩过 `Tikao Tatsuzawa` 猜"立川"是错的，已回退）。
-**人名默认不进术语表**（`--terms-people` 才保留）：中文间隔号「·」是音译人名标志，术语名不会带。
+**人名走白名单，不再一刀切过滤**：中文间隔号「·」是音译人名标志，术语名不会带。
+原先 `load_terms()` 把带「·」的条目**全丢**，理由是 Wikidata 兜底的人名质量差
+（`Andrew Granville → 安德鲁·关维`）。但 langlinks 来源的人名是权威译名，一起丢会让
+正文留下没译的 `Helmut Hasse`（中文维基有条目「赫尔穆特·哈斯」）。
+
+现在：`python scripts/wikiterm.py --verify-people` 把缓存里带「·」的条目**回查一遍**
+en.wikipedia 的 langlinks，确有中文条目的写进 `scripts/wiki-zh-terms-people.json`；
+`md2zh.load_terms()` 只放行这份白名单里的人名。实测 56 条保留 32 条。
+新增人名条目后记得重跑 `--verify-people`。
+
+坑：`langlinks()` / `wikidata_zh()` 早期把 `normalized`+`redirects` 做成了**反查表**
+（最终标题 → 请求名），**两个请求名跳到同一页面时会互相覆盖**
+（`Carl Siegel` 与 `Carl Ludwig Siegel` 都指向同一 en 条目），其中一个就永远查不到
+langlink，被误判成「没有中文条目」。必须**正向映射**（请求名 → 最终标题）再沿链展开。
 
 坑：
 - **简繁转换用 `zh.wikipedia.org` 的 `action=parse&variant=zh-cn`，必须分批（40 条）**，
