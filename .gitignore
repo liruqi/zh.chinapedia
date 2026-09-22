@@ -3,9 +3,9 @@
 
 # Production
 /build
-/build-nowow
-/build-slim
-/build-slim2
+# build-nowow / build-slim / build-slim2 / build-preview ...
+# 注意：gitignore 不支持行尾注释，注释必须单独成行，否则整行被当成字面模式。
+/build-*
 /scratch
 # 临时挪出去的 wow 数据（docs/wow/capycraft 是 submodule，本地调试时整体搬到这里）
 /_wow_tmp
