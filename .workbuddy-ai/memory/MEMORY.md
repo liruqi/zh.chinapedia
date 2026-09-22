@@ -321,9 +321,18 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
   5. **堆上限直接从 GC 日志读**：`Mark-Compact (reduce) 3870.7 (4099.5) MB` 里括号中
      的数就是上限。`3870.7 -> 3870.7` 表示一轮 GC 什么都没回收到（真的不够，不是泄漏）。
      **4096 不够，8192 才够**。别把数字设得超过物理内存。
-  6. 治本：装 `@docusaurus/faster` 后 `npm run build:faster`
-     （`future.experimental_faster` → Rspack + SWC）。仓库里的开关是
-     `process.env.FASTER === '1'`，**没装包时默认关闭**，不会拖累现有构建。
+  6. 治本：装 `@docusaurus/faster` 后 `npm run build:faster`（Rspack + SWC）。
+     开关是 `process.env.FASTER === '1'`，**没装包时默认关闭**，不影响现有构建。
+     - 键名是 **`future.faster`**；老名字 `experimental_faster` 会报「has been renamed」。
+     - **别写 `faster: true`**：它会把 `ssgWorkerThreads` 一起打开，而该项要求
+       `v4.removeLegacyPostBuildHeadAttribute === true`，否则直接 throw。
+       要显式列项并跳过 `ssgWorkerThreads` / `gitEagerVcs`。
+  7. **`outDir` 不是 config 字段**，只能走 CLI：`docusaurus build --out-dir <dir>`。
+     写进 `docusaurus.config.js` 会报 `These field(s) ("outDir",) are not recognized`。
+  8. **改完 docusaurus.config.js 必须真校验一次**，只做 `node --check` 不够
+     （语法对但字段不认识照样挂）。一秒出结果、不用跑构建的办法：
+     `require('@docusaurus/core/lib/server/config.js').loadSiteConfig({siteDir: process.cwd()})`，
+     顺便打印 `docs.exclude` / `future.faster` 确认 env 分支生效。
   7. 产物在 `build/wiki/<分类>/<条目>.html`（不是目录）
   6. `exclude` 会**覆盖**插件默认值，所以 config 里写成 `['wow/**', ...DEFAULT_EXCLUDE]`；
      顶层已有 `onBrokenLinks: 'log'`，别再在 docs 插件里设 `'throw'`，会把 log 变成中断。
