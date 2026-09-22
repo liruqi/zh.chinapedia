@@ -306,10 +306,20 @@ LLM 翻译长条目（>3 万字）很慢且质量不稳，可用「机械解析 
   1. `npm.cmd install --no-audit --no-fund --registry=https://registry.npmmirror.com`
      （默认 registry 在国内极慢，47 分钟都装不完；镜像约 32 分钟。不改动 package-lock.json）
   2. 构建**必须** `dangerouslyDisableSandbox`，否则写 `.docusaurus/` 会 EPERM
-  3. 全量构建会因 `docs/wow/`（9711 篇魔兽物品页）报 `EMFILE: too many open files`。
-     验证时临时给 docs 插件加 `exclude: ['wow/**']`，跑完务必删掉
-  4. `NODE_OPTIONS=--max-old-space-size=4096`；client 8.3m + server 4.0m，共约 12 分钟
+  3. **`docs/wow/` 是 9711 篇，占全站 9729 篇的 99.8%**，全量构建慢且吃内存。
+     不要手工改 config 去 exclude（容易忘记还原），用现成的脚本：
+     - `npm run build:slim` = `SKIP_WOW=1` → docs 插件 exclude `wow/**`，
+       产物写 **`build-slim/`**（不会覆盖正式 `build/`，防止误发布瘦身版）。
+       改正文/样式时用这个，一两分钟出结果。Windows 的 cmd 不吃 `VAR=1 cmd` 前缀，
+       用 Git Bash 或 `set SKIP_WOW=1&& docusaurus build`。
+     - `npm run build:big` = `NODE_OPTIONS=--max-old-space-size=8192 docusaurus build`
+       （正式全量构建）。崩溃栈是 `v8::FatalProcessOutOfMemory` + `Runtime_MapGrow`
+       而不是 EMFILE 时，就是堆不够 —— 裸 `npm run build` 用默认堆必挂。
+       数字别超过物理内存，否则换页更慢。
+  4. 全量：client ~24m + server ~7m + 9711 页落盘；不带 wow 时 client 8.3m + server 4.0m，约 12 分钟
   5. 产物在 `build/wiki/<分类>/<条目>.html`（不是目录）
+  6. `exclude` 会**覆盖**插件默认值，所以 config 里写成 `['wow/**', ...DEFAULT_EXCLUDE]`；
+     顶层已有 `onBrokenLinks: 'log'`，别再在 docs 插件里设 `'throw'`，会把 log 变成中断。
 
 ## GitHub 渲染公式的坑（.md 在 GitHub 上直接看）
 
