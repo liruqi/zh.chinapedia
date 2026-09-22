@@ -47,6 +47,10 @@ const config = {
   favicon: 'img/favicon.ico',
   future: {
     v4: false,
+    // 9711 篇 wow 页面用 webpack 编译，内存峰值很高（4G 堆会 OOM）。
+    // 装了 @docusaurus/faster 之后用  npm run build:faster  打开：换成 Rspack + SWC，
+    // 内存和时间都会明显下降。**没装这个包就别开**，Docusaurus 会直接报错退出。
+    ...(process.env.FASTER === '1' ? { experimental_faster: true } : {}),
   },
   trailingSlash: false,
 

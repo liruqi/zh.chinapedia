@@ -9,6 +9,7 @@
     "build": "docusaurus build",
     "build:slim": "SKIP_WOW=1 docusaurus build",
     "build:big": "NODE_OPTIONS=--max-old-space-size=8192 docusaurus build",
+    "build:faster": "FASTER=1 NODE_OPTIONS=--max-old-space-size=8192 docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
