@@ -29,6 +29,9 @@
   - **两个空格的来源**：`notes2footnotes.py` 把 `［1］［2］` 转 `[^n]` 时，
     前一个的 post-space 和后一个的 pre-space 各补一次 → `[^1]  [^2]`。
     已在 `body = MARK_RE.sub(repl, body)` 之后加 `fix_spacing(body)` 收敛。
+  - **生成端也要挂**，否则重新生成又会出现：`wikitext2md.py` 第 9 步还原脚注标记
+    （连续两个 `<ref>` → `[^1][^2]`）之后加了 `fix_spacing(body)`；
+    `md2footnotes.py` 原来的成对正则换成 `fix_spacing()`。
   - `prebuild_check.mjs` 已加对应检查项「脚注标记间距不规范」，改完必跑 `npm run check`。
 - `remark-gfm` 不用配，`@docusaurus/mdx-loader` 默认启用。
 - `<ref>` → `［n］` 是纯文本点不动。用 `scripts/notes2footnotes.py` 接成真脚注

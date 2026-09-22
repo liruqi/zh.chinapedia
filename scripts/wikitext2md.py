@@ -54,6 +54,7 @@ from wiki2md import (  # noqa: E402
     fix_github_math,
     parse_wiki_url,
 )
+from fix_footnote_spacing import fix_spacing  # noqa: E402
 
 UA = "zh.chinapedia-wikitext2md/1.0 (+https://github.com/liruqi/zh.chinapedia)"
 
@@ -1207,8 +1208,9 @@ def convert(wikitext, lang="en", title=None):
     for idx, tbl in enumerate(ctx.get("tables", [])):
         body = body.replace("\x02TABLE%d\x03" % idx, wiki_inline(tbl, lang, title))
 
-    # 9. 还原脚注标记
+    # 9. 还原脚注标记（相邻的补一个空格：连续两个 <ref> 会产出 [^1][^2]）
     body = re.sub(r"\x02REF(\d+)\x03", lambda m: "[^%s]" % m.group(1), body)
+    body = fix_spacing(body)
 
     # 10. 还原数学
     def math_repl(m):
