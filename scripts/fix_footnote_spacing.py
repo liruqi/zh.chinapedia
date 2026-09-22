@@ -100,11 +100,12 @@ def main(argv=None):
         total_hits += hits
         rel = p.replace('\\', '/')
         if args.check or args.dry_run:
-            print('%s  (%d 处)' % (rel, hits))
-            for ln, before, after in find_offenders(text)[:5]:
+            offenders = find_offenders(text)
+            print('%s  (%d 处，分布在 %d 行)' % (rel, hits, len(offenders)))
+            for ln, before, after in offenders[:5]:
                 print('    L%-5d %s   →   %s' % (ln, before, after))
-            if hits > 5:
-                print('    … 另有 %d 处' % (hits - 5))
+            if len(offenders) > 5:
+                print('    … 另有 %d 行' % (len(offenders) - 5))
             continue
         open(p, 'wb').write(fix_spacing(text).encode('utf-8'))
         print('%-58s 修 %d 处' % (rel, hits))

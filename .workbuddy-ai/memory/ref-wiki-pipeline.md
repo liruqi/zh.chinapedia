@@ -33,6 +33,13 @@
     （连续两个 `<ref>` → `[^1][^2]`）之后加了 `fix_spacing(body)`；
     `md2footnotes.py` 原来的成对正则换成 `fix_spacing()`。
   - `prebuild_check.mjs` 已加对应检查项「脚注标记间距不规范」，改完必跑 `npm run check`。
+  - **判据一致性**由 `scratch/_fncross.mjs` 守着（`node scratch/_fncross.mjs docs`）：
+    它把预检的 JS 正则和修复脚本的 Python 正则跑在同一份语料上，比对**处数**。
+    两边必须一致——若预检报错而修复脚本认为没问题，那个文件就永远修不好（报了也改不掉）；
+    反之则有漏网。已在 9729 篇（含 wow）+ en 仓 3 篇上验证一致。
+  - 报告输出里**「处数」和「行数」要分开说**：一处一行的情况很多，但也有
+    `[^11][^12][^13]` 这种一行 2 处的。早先写 `if hits > 5: print('另有 %d 处' % (hits-5))`
+    把处数当行数减，6 处 2 行会输出「另有 1 处」，读起来像是还有第 7 处。
 - `remark-gfm` 不用配，`@docusaurus/mdx-loader` 默认启用。
 - `<ref>` → `［n］` 是纯文本点不动。用 `scripts/notes2footnotes.py` 接成真脚注
   （删 `## 注释` 节 → `［n］`→`[^n]` → 文末补定义，已有定义顺延编号）。
