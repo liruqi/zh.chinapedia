@@ -50,7 +50,25 @@ const config = {
     // 9711 篇 wow 页面用 webpack 编译，内存峰值很高（4G 堆会 OOM）。
     // 装了 @docusaurus/faster 之后用  npm run build:faster  打开：换成 Rspack + SWC，
     // 内存和时间都会明显下降。**没装这个包就别开**，Docusaurus 会直接报错退出。
-    ...(process.env.FASTER === '1' ? { experimental_faster: true } : {}),
+    //
+    // 注意两点：
+    // - 老名字是 `experimental_faster`，3.10 起已改名 `faster`，用老名字会直接报错。
+    // - 别用 `faster: true` 这个快捷写法：它会把 `ssgWorkerThreads` 也打开，
+    //   而该项要求 `v4.removeLegacyPostBuildHeadAttribute` 为 true，否则构建报错。
+    //   所以这里显式列要开的项，把那两个跳过去。
+    ...(process.env.FASTER === '1'
+      ? {
+          faster: {
+            swcJsLoader: true,
+            swcJsMinimizer: true,
+            swcHtmlMinimizer: true,
+            lightningCssMinimizer: true,
+            mdxCrossCompilerCache: true,
+            rspackBundler: true,
+            rspackPersistentCache: true,
+          },
+        }
+      : {}),
   },
   trailingSlash: false,
 
@@ -66,9 +84,6 @@ const config = {
   projectName: 'zh.chinapedia', // Usually your repo name.
 
   onBrokenLinks: 'log',
-
-  // 瘦身材构建（SKIP_WOW=1）单独输出到 build-slim/，别覆盖正式产物
-  outDir: SKIP_WOW ? 'build-slim' : 'build',
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
