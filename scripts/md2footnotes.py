@@ -27,6 +27,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fix_footnote_spacing import fix_spacing  # noqa: E402
+
 # [文字](url) 或 [文字](url "title")
 LINK_RE = re.compile(r'\[([^\]\n]*)\]\((https?://[^)\s]+)(?:\s+"[^"]*")?\)')
 # [[7]](url) —— wikitext <ref> 留下的引用标记
@@ -157,8 +160,10 @@ def convert(text: str, all_sections: bool = False):
 
             ln = REF_LINK_RE.sub(repl_ref, ln)
             ln = LINK_RE.sub(repl_link, ln)
-            # 连续脚注合并成一个空格分隔
-            ln = re.sub(r'\s*\[\^([^\]]+)\]\s*\[\^', r' [^\1] [^', ln)
+            # 连续脚注之间恰好一个空格。
+            # 别用 `\s*\[\^([^\]]+)\]\s*\[\^` 这种成对正则——链式标记
+            # `[^55][^56][^57]` 只会被拆开前两个，留下 `[^56][^57]` 不修。
+            ln = fix_spacing(ln)
             lines[i] = ln
 
     if not defs:

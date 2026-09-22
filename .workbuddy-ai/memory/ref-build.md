@@ -36,12 +36,15 @@ hast 校验要认这个颜色；`_macroscan.mjs` 用 `throwOnError: true` 直接
 ## 校验
 
 - **首选 `npm run check`（= `scripts/prebuild_check.mjs`）**：一次扫掉标题裸 `<>`、
-  MDX 裸 `{expr}`、KaTeX 未定义宏、图还在裸链维基、脚注定义/引用对不上、裸 URL。
+  MDX 裸 `{expr}`、KaTeX 未定义宏、图还在裸链维基、脚注定义/引用对不上、
+  **相邻脚注标记间距不规范**、裸 URL。
   默认扫 `docs/` 跳过 `wow/`，`--wow` 扫全部，有问题退出码 1。
   - 判据别写错：脚注**引用**后可能紧跟冒号（「…[^23]：」），不能靠 `(?!:)` 区分定义与引用，
     要先整段抠掉「定义行 + 缩进续行」；裸 URL 要加 `(?!\()`。
   - **传路径必须传目录，不能传文件**：传文件会在 `readdirSync` 抛 ENOTDIR 被静默吞掉，
     输出「预检文件数: 0 / √ 全部通过」——看着像通过其实一个都没扫。
+    **Git-Bash 风格的 `/tmp/xxx` 也会踩这个**：Node 在 Windows 上读不了 `/tmp`，
+    同样静默变 0 个文件。自测要用仓库内的相对路径（如 `scratch/_fncheck`）。
 - 三件套在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`：`katexcheck.mjs`、
   `mdxtest.mjs`、`mathnodes.mjs`（remark-math AST：inlineMath/math 计数，查一行式 `$$`）。
 - **必跑第四件套 `r_mdxrun.mjs`**：真正 eval 编译产物（stub jsx，不用装 react），抓

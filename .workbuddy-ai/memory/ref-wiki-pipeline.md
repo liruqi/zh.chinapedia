@@ -18,6 +18,18 @@
   `scripts/md2footnotes.py`（幂等、保 CRLF；默认跳过本身就是链接清单的章节，`--all` 关掉）。
 - 正文 `<ref>` 残留的 `[[7]](url)` 也是外链，同样转脚注——往往比 `[文字](url)` 更多。
 - 脚注标记后紧跟 `[` 或 `$` 要补空格，否则 `[^1]$x$` GitHub 不渲染。
+- **相邻脚注标记之间恰好一个空格**（`[^16][^17]` → `[^16] [^17]`）。统一由
+  `scripts/fix_footnote_spacing.py` 负责：`fix_spacing(text)` 供其他脚本 import，
+  CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。
+  - 用**前瞻**正则，链式标记 `[^55][^56][^57]` 才能一次全拆开。成对正则
+    （`\s*\[\^([^\]]+)\]\s*\[\^`）只拆前两个，三连会留下 `[^56][^57]` 不修——
+    `md2footnotes.py` 原来就是这么写的，已换成 `fix_spacing()`。
+  - 空白用 `[ \t]*` 不用 `\s*`：否则会把相邻两行（很可能是脚注定义）粘到一起。
+    定义行是 `[^n]:`，`]` 后跟 `:`，天然不命中。
+  - **两个空格的来源**：`notes2footnotes.py` 把 `［1］［2］` 转 `[^n]` 时，
+    前一个的 post-space 和后一个的 pre-space 各补一次 → `[^1]  [^2]`。
+    已在 `body = MARK_RE.sub(repl, body)` 之后加 `fix_spacing(body)` 收敛。
+  - `prebuild_check.mjs` 已加对应检查项「脚注标记间距不规范」，改完必跑 `npm run check`。
 - `remark-gfm` 不用配，`@docusaurus/mdx-loader` 默认启用。
 - `<ref>` → `［n］` 是纯文本点不动。用 `scripts/notes2footnotes.py` 接成真脚注
   （删 `## 注释` 节 → `［n］`→`[^n]` → 文末补定义，已有定义顺延编号）。

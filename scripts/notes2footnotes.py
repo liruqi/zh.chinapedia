@@ -35,8 +35,12 @@ wiki2md.py 翻译维基条目时会把 ``<ref>…</ref>`` 整理成文末的「�
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fix_footnote_spacing import fix_spacing  # noqa: E402
 
 # 「注释」「Notes」「脚注」这类章节
 NOTES_HEADING_RE = re.compile(r'^#{1,6}\s*(注释|Notes|脚注|注解)\s*$')
@@ -146,6 +150,9 @@ def convert(text: str):
         return '%s[^%d]%s' % (pre, n, post)
 
     body = MARK_RE.sub(repl, body)
+    # 相邻的 ［1］［2］ 会各补一次空格（前一个的 post + 后一个的 pre），
+    # 结果是两个空格。统一收敛成一个（实测仓库里那 9 处就是这么来的）。
+    body = fix_spacing(body)
 
     # ---- 4. 文末拼脚注块 ------------------------------------------------------
     lines = body.split(nl)

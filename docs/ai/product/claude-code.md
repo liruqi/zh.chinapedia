@@ -25,7 +25,7 @@ sources:
 
 - **Terminal (CLI)**: 在本地运行 Claude 的主要方式[^4]
 - **VS Code Extension**: 提供图形界面,支持并排差异对比和行内批注[^5]
-- **Desktop App**: 独立应用,适合希望跳过终端的用户,提供 PR 监控和服务器预览的视觉工具[^6][^7]
+- **Desktop App**: 独立应用,适合希望跳过终端的用户,提供 PR 监控和服务器预览的视觉工具[^6] [^7]
 - **Web Interface**: 在 https://claude.ai/code 使用,运行在 Anthropic 管理的云基础设施上,支持远程工作[^8]
 
 ## Pricing & Access
@@ -51,7 +51,7 @@ Claude Code 通常包含在 Anthropic 的付费计划中:
 
 2026 年 3 月 31 日,Anthropic 的 Claude Code 源代码因 **npm 包配置错误** 意外公开。安全研究员 **Chaofan Shou** 发现发布的 npm 包中包含 source map 文件,该文件指向一个 R2 存储桶,暴露了完整的未混淆 TypeScript 代码库[^11]。
 
-> **重要区分**:泄漏的是 **Claude Code CLI 工具的源代码**,而非 Claude AI 模型本身。模型权重、训练数据和核心基础设施未受影响[^12][^13]。
+> **重要区分**:泄漏的是 **Claude Code CLI 工具的源代码**,而非 Claude AI 模型本身。模型权重、训练数据和核心基础设施未受影响[^12] [^13]。
 
 ### 泄漏规模
 
@@ -85,7 +85,7 @@ Claude Code 使用 **Bun** 作为运行时,默认生成 source map 文件。由�
 - **Claude Code 用户**:工具功能不受影响,可继续正常使用
 - **企业客户**:核心基础设施和模型能力保持安全
 
-**对 Anthropic 的影响**[^18][^19]:
+**对 Anthropic 的影响**[^18] [^19]:
 - 知识产权暴露:内部架构、工具实现、未发布功能细节公开
 - 竞争情报流失:竞争对手可研究其 CLI 设计
 - 信任影响:五天内的第二起重大配置失误(3 月 26 日 CMS 配置错误曾暴露 Claude Mythos 模型细节)
