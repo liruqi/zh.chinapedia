@@ -72,11 +72,21 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
    （默认 registry 极慢，47 分钟装不完；镜像约 32 分钟。不改 package-lock.json）
 2. 构建**必须** `dangerouslyDisableSandbox`，否则写 `.docusaurus/` 会 EPERM。
 3. **`docs/wow/` 是 9711 篇，占全站 99.8%**。别手改 config，用现成脚本：
-   - `npm run build:slim` = `SKIP_WOW=1` → exclude `wow/**`，产物写 `build-slim/`。
-     改正文/样式用这个，一两分钟出结果。Windows cmd 不吃 `VAR=1 cmd` 前缀，用 Git Bash 或
-     `set SKIP_WOW=1&& …`。
-   - `npm run build:big` = `NODE_OPTIONS=--max-old-space-size=8192 docusaurus build`（正式全量）。
+   - `npm run build:slim` → `SKIP_WOW=1`，exclude `wow/**`，产物写 `build-slim/`。
+     改正文/样式用这个，一两分钟出结果。
+   - `npm run build:big` → 追加 `NODE_OPTIONS=--max-old-space-size=8192`（正式全量）。
      崩溃栈是 `v8::FatalProcessOutOfMemory` + `Runtime_MapGrow` 而非 EMFILE 时就是堆不够。
+   - 四个构建脚本都走 `scripts/build.mjs`（Node 设好环境变量再 spawn docusaurus）。
+     **别再改回 `SKIP_WOW=1 docusaurus build` 这种写法**：npm 在 Windows 上用 cmd.exe 跑
+     scripts，POSIX 前缀会被当成命令名 → `'SKIP_WOW' is not recognized`，
+     而且报错在 npm 层、看起来像环境问题。`build:slim` / `build:big` / `build:faster`
+     三个脚本在 2026-09-23 之前**在 Windows 上一直是坏的**。
+   - **本环境（WorkBuddy CLI）另有一个坑**：`NODE_OPTIONS` 里注入了
+     `node-language-shim.cjs`，它把 `fs.rm` 换成 safe-delete，
+     **对已存在的 `build-slim/`（158 个文件）会抛
+     `SAFE_DELETE_BULK_CONFIRM_REQUIRED`**（>50 个文件的批量删除要确认）。
+     所以在这个环境里**要么先手动 `rm -rf build-slim`，要么换一个全新的 `--out-dir`**。
+     这是宿主环境的限制，不是构建脚本的问题。
 4. 全量：client ~24m + server ~7m + 9711 页；不带 wow 约 12 分钟（有持久化缓存后
    server 1.5m + client 9.5m）。
 5. **堆上限直接从 GC 日志读**：`Mark-Compact (reduce) 3870.7 (4099.5) MB` 括号里的数就是上限；

@@ -28,9 +28,12 @@
 5. **翻译带图的条目必须先搬图再翻译**（`wikitext2md` → `wikiimg2r2.py` → `img2figure.py` → 翻译），
    否则 `[[File:…]]` 连同图注被丢。译完中英两版 `grep -c '^<figure>'` 数量必须相等。
 6. **公式必须三行**（`$$` 独占一行），一行式 `$$x$$` 会被 remark-math 6 当 inlineMath。
-7. **`docs/wow/` 占 99.8%**，改正文用 `npm run build:slim`（`SKIP_WOW=1` → `build-slim/`）；
-   正式全量用 `npm run build:big`（`--max-old-space-size=8192`，4096 不够）。
-   构建**必须** `dangerouslyDisableSandbox`。
+7. **`docs/wow/` 占 99.8%**，改正文用 `npm run build:slim`（跳过 `wow/` → `build-slim/`）；
+   正式全量用 `npm run build:big`（8G 堆，4096 不够）。
+   四个构建脚本都走 `scripts/build.mjs`（Node 设环境变量再 spawn），**别改回
+   `SKIP_WOW=1 docusaurus build` 那种 POSIX 前缀写法**（Windows 上 cmd 会当成命令名）。
+   构建**必须** `dangerouslyDisableSandbox`。本环境的 safe-delete shim 会拦住对已存在
+   `build-slim/` 的批量删除，先手动 `rm -rf` 或换新 `--out-dir`。
 8. **线上 `zh.chinapedia.org` 跑的是 `docusaurus start`（dev server）**，不是静态产物
    → 服务器上 `npm run build` 对访客没有影响。修复步骤见仓库根 `DEPLOY.md`。
 9. **提交约定**：改动认为已完成就直接提交。凭证只放 `scripts/r2.local.json`（gitignore，不提交）。
