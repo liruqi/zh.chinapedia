@@ -29,13 +29,20 @@ git pull origin main
 export PATH="/opt/homebrew/bin:$PATH"  # 或你的 node 路径
 
 # 构建（Mac Mini 需要 8192 MB 堆；4096 会 OOM）
-NODE_OPTIONS=--max-old-space-size=8192 npm run build
+npm run build:big
 ```
 
-构建成功后产物在 `build/` 目录。仓库也提供了等价脚本 `npm run build:big`。
+构建成功后产物在 `build/` 目录。
 
 > 全量约 9711 页，client ~24m + server ~7m。若只想验证正文改动，
-> 可用 `SKIP_WOW=1 npm run build`（`npm run build:slim`）先把 `build-slim/` 跑出来。
+> 用 `npm run build:slim` 先把 `build-slim/` 跑出来（跳过 `docs/wow/`）。
+
+`build` / `build:slim` / `build:big` / `build:faster` 都走 `scripts/build.mjs`，
+由 Node 设好环境变量再启动 docusaurus —— 因为 npm 在 Windows 上用 cmd.exe 跑 scripts，
+`SKIP_WOW=1 docusaurus build` 这种 POSIX 前缀会被 cmd 当成命令名而直接失败。
+`build:big` 只是**追加** `--max-old-space-size=8192`，你自己设了 `NODE_OPTIONS` 就尊重你的。
+
+> `build:faster` 需要先装 `@docusaurus/faster`（Rspack + SWC），没装会直接报错退出。
 
 ### 3. 停止现有的 dev server
 
