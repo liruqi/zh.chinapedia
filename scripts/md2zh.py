@@ -808,6 +808,12 @@ def main(argv=None):
                                              body.strip())
 
     out_path = os.path.abspath(args.output)
+    # 站内已有译好的条目时，把指向 en.wikipedia 的外链换成站内相对链接
+    try:
+        import wikilink_localize
+        final = wikilink_localize.localize_text(final, out_path)
+    except Exception as exc:                      # 映射推导失败不该拖垮翻译
+        print("! 站内链接改写跳过：%s" % exc)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "wb") as fh:
         fh.write(final.replace("\n", "\r\n").encode("utf-8"))

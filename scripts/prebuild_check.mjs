@@ -8,6 +8,7 @@
 //   4. 图还在裸链维基（反盗链，必裂）
 //   5. 脚注定义了但没被引用（remark-gfm 不渲染，等于白写）
 //   6. 相邻脚注标记之间缺空格 / 空格多于一个（[^16][^17] 渲染成 [16][17] 挤在一起）
+//   7. 站内已有译好的条目，正文却还指着 en.wikipedia（读者白跳一趟外站）
 //
 // 用法：
 //   node scripts/prebuild_check.mjs                 # 扫 docs/，跳过 wow/
@@ -17,6 +18,7 @@
 // 退出码：有问题返回 1，CI 里可以直接用。
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import { compile } from '@mdx-js/mdx';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
@@ -193,6 +195,37 @@ async function unifiedRun(body) {
     .use(remarkParse).use(remarkGfm).use(remarkMath).use(remarkRehype)
     .use(rehypeKatex, { macros: KATEX_MACROS })
     .run(unified().use(remarkParse).use(remarkGfm).use(remarkMath).parse(body));
+}
+
+// ---- 7. 站内已有译好的条目，却还指着 en.wikipedia -------------------------
+// 这类外链不算「坏链」（onBrokenLinks: 'log'，构建不报），但读者白跳一趟外站。
+// 映射表靠解析各条目**开头段声明的英文名**推导（`**词条名**（英语：X）`），逻辑在
+// Python 侧（scripts/wikilink_localize.py），这里只负责调用 + 把结果并进报告。
+// 解释器找不到就安静跳过——这条是质量提示，不该把预检本身搞挂。
+{
+  const roots = ROOTS.filter((r) => fs.existsSync(r));
+  if (roots.length) {
+    for (const py of ['python3', 'python', 'py']) {
+      let out = null;
+      try {
+        out = execFileSync(py, [path.join('scripts', 'wikilink_localize.py'),
+                                ...roots, '--json'], {
+          encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 180000,
+        });
+      } catch (e) {
+        // 有发现时脚本返回 1，正常；其它错误（没有这个解释器）就换下一个
+        if (e.status === 1 && e.stdout) out = e.stdout; else continue;
+      }
+      let data;
+      try { data = JSON.parse(out); } catch { continue; }
+      for (const [file, list] of Object.entries(data.files || {})) {
+        for (const [, before] of list) {
+          note(path.join('docs', file), '外链本可走站内', before.slice(0, 90));
+        }
+      }
+      break;
+    }
+  }
 }
 
 // ---- 汇总 ---------------------------------------------------------------

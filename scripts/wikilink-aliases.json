@@ -1,0 +1,8 @@
+{
+  "_comment": "手工补充的重定向别名：英文维基标题 → 站内相对路径[#中文锚点]。自动推导只认条目开头段自己声明的英文名，这里补「英文维基重定向到同一主题」的写法。",
+  "aliases": {
+    "twin prime conjecture": "math/孪生素数.md#孪生素数猜想",
+    "polignac's conjecture": "math/孪生素数.md#波利尼亚克猜想",
+    "de polignac's conjecture": "math/孪生素数.md#波利尼亚克猜想"
+  }
+}

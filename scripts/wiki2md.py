@@ -788,6 +788,13 @@ def main(argv=None):
         out_path = os.path.join(root, args.docs_root, safe_filename(doc_cat),
                                 safe_filename(doc_title) + ".md")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    # 站内已有译好的条目时，把指向 en.wikipedia 的外链换成站内相对链接
+    try:
+        import wikilink_localize
+        body = wikilink_localize.localize_text(
+            body, out_path, quiet=args.quiet)
+    except Exception as exc:                      # 映射推导失败不该拖垮生成
+        log("  ! 站内链接改写跳过：%s" % exc, args.quiet)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("---\ntitle: %s\n---\n\n%s\n" % (doc_title, body))
     log("✓ 已写入 %s（%d 字符）" % (out_path, len(body)), args.quiet)
