@@ -4,6 +4,16 @@
     "key": "docs/math/Cplot_zeta.svg.png",
     "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Cplot_zeta.svg.png"
   },
+  "docs/math|1000|Goldbach partitions of the even integers from 4 to 28 300px.png": {
+    "bytes": 37901,
+    "key": "docs/math/Goldbach_partitions_of_the_even_integers_from_4_to_28_300px.png",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Goldbach_partitions_of_the_even_integers_from_4_to_28_300px.png"
+  },
+  "docs/math|1000|Goldbach-1000000.png": {
+    "bytes": 92705,
+    "key": "docs/math/Goldbach-1000000.png",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Goldbach-1000000.png"
+  },
   "docs/math|1000|ParametricZeta.svg": {
     "bytes": 145542,
     "key": "docs/math/ParametricZeta.svg.png",
@@ -53,5 +63,10 @@
     "bytes": 84676,
     "key": "docs/math/Zeta_polar.svg.png",
     "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Zeta_polar.svg.png"
+  },
+  "docs/math|1000|goldbachs comet.gif": {
+    "bytes": 15487,
+    "key": "docs/math/goldbachs_comet.gif",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/goldbachs_comet.gif"
   }
 }
