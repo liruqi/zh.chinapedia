@@ -205,11 +205,18 @@ async function unifiedRun(body) {
 {
   const roots = ROOTS.filter((r) => fs.existsSync(r));
   if (roots.length) {
+    // 默认扫本仓 docs/，映射表与别名表都按本仓推导。
+    // 扫外部目录（如 en.chinapedia/docs/math）时不能沿用本仓的别名表——那里的值是
+    // zh 路径（`math/孪生素数.md`），套到别的仓上会报「外链本可走站内」的**假阳性**。
+    // 外部目录一律：以它自身为 docs-root，且不带别名表。
+    const external = roots.length === 1 && path.resolve(roots[0]) !== path.resolve('docs');
+    const extra = external ? ['--docs-root', roots[0], '--aliases', ''] : [];
+    const prefix = external ? roots[0] : 'docs';
     for (const py of ['python3', 'python', 'py']) {
       let out = null;
       try {
         out = execFileSync(py, [path.join('scripts', 'wikilink_localize.py'),
-                                ...roots, '--json'], {
+                                ...roots, '--json', ...extra], {
           encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 180000,
         });
       } catch (e) {
@@ -220,7 +227,7 @@ async function unifiedRun(body) {
       try { data = JSON.parse(out); } catch { continue; }
       for (const [file, list] of Object.entries(data.files || {})) {
         for (const [, before] of list) {
-          note(path.join('docs', file), '外链本可走站内', before.slice(0, 90));
+          note(path.join(prefix, file), '外链本可走站内', before.slice(0, 90));
         }
       }
       break;

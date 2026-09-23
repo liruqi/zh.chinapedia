@@ -87,6 +87,9 @@ HEAD_RE = re.compile(r'^(#{2,6})\s+(.+?)\s*$')
 _SEG_SPLIT_RE = re.compile(r'[，,；;、]')
 # U+2010..U+2015 各种破折号；维基标题里 `Landau–Siegel` 用的是 U+2013
 _DASH_RE = re.compile(r'[\u2010-\u2015]')
+# 撇号有直/弯两种写法，文件名里通常干脆不写：维基 `Goldbach's_conjecture`
+# 对应仓库里的 `goldbachs_conjecture.md`，所以归一化时一律抹掉。
+_APOSTROPHE_RE = re.compile(u"['\u2018\u2019\u02bc]")
 # github-slugger 删标点/符号，但这两个字符**保留**（实测 `_x_`→`_x_`、`a-b`→`a-b`）
 _SLUG_KEEP = frozenset('-_')
 
@@ -101,9 +104,14 @@ def read_text(path):
 
 
 def normalize(title):
-    """维基标题归一化：去百分号编码、下划线当空格、破折号统一、小写。"""
+    """维基标题归一化：去百分号编码、下划线当空格、破折号统一、去撇号、小写。
+
+    去撇号是为了对上「文件名把撇号丢掉」的条目：
+    维基标题 ``Goldbach's_conjecture`` ↔ ``goldbachs_conjecture.md``。
+    """
     t = unquote(title).replace('_', ' ')
     t = _DASH_RE.sub('-', t)
+    t = _APOSTROPHE_RE.sub('', t)
     return re.sub(r'\s+', ' ', t).strip().lower()
 
 

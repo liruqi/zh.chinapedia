@@ -62,6 +62,13 @@ check('大小写等价', W.normalize('Twin_prime'), W.normalize('twin prime'))
 # 维基标题里 Landau–Siegel 用的是 U+2013，链接里是 %E2%80%93
 check('破折号归一', W.normalize('Landau%E2%80%93Siegel_zero'),
       'landau-siegel zero')
+# 文件名常把撇号丢掉：goldbachs_conjecture.md ↔ 维基 Goldbach's_conjecture
+check('撇号归一（直引号）', W.normalize("Goldbach's_conjecture"),
+      'goldbachs conjecture')
+check('撇号归一（弯引号）', W.normalize(u'Goldbach\u2019s_conjecture'),
+      'goldbachs conjecture')
+check('撇号：维基标题与文件名等价',
+      W.normalize("Goldbach's_conjecture"), W.normalize('goldbachs_conjecture'))
 
 print('\n--- slugify（必须与 github-slugger 逐字一致）---')
 # 期望值全部来自真 `github-slugger`（node -e "new S().slug(...)"）的实测输出，
