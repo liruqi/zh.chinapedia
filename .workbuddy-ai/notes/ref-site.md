@@ -106,6 +106,9 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
     `onBrokenLinks: 'log'`，别在 docs 插件里设 `'throw'`。
 11. **`docusaurus serve` 没有 `--out-dir`**（3.10.1 实测 unknown option）。预览用
     `python -m http.server <port> --bind 127.0.0.1 --directory <dir>`，baseUrl 是 `/` 所以绝对路径 OK。
+    **URL 必须带 `.html`**：`trailingSlash: false` 的产物是 `wiki/math/黎曼猜想.html`，
+    `http.server` 不做无扩展名解析，写 `/wiki/math/黎曼猜想` 会 404（踩过）。
+    CJK 路径用百分号编码最稳。
 12. 站点**没有 CI**：无 `.github/workflows`，push 不会自动部署。"改了 CSS 线上没变化"
     先查 `build/` 的 mtime 是不是比源码旧。
 13. 删构建目录时 `rm -rf build-*` 会被安全删除策略拦（`SAFE_DELETE_FAIL_CLOSED … trash-failed` /
