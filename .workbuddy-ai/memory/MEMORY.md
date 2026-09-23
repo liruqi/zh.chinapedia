@@ -2,6 +2,8 @@
 
 中文维基翻译站（Docusaurus 3.10，`docs/` 下 ~9729 篇，其中 `docs/wow/` 9711 篇）。
 英文镜像 `D:\SRC\Z\en.chinapedia\`（纯内容仓库，无构建工具链）。
+其中 `en.chinapedia/docs/math/` 是**独立 git 仓**（远端 `git@github.com:chinapedia/math.git`）：
+`main` = 英文机械转换稿，orphan 分支 `th` = 泰语稿，文件名两版一致（便于 `git diff main..th`）。
 
 ## 详细参考（**不自动注入**，做对应工作时先 Read 对应文件，不要凭记忆猜）
 
