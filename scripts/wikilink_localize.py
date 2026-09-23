@@ -29,8 +29,10 @@ r"""把指向 en.wikipedia.org 的词条链接改写成站内链接。
 ``…/wiki/Riemann_hypothesis#Consequences`` 这种带小节的链接，靠**中英两版标题序列对齐**
 换算成中文标题：``en.chinapedia/docs/<同路径>`` 存在时，逐条比对 ``##`` / ``###`` … 标题，
 **从第一条层级对不上的地方就停止信任**（黎曼猜想.md 尾部 EN 有 ``## Notes`` 而中文版没有，
-正是靠这条避免错位）。换算出的中文标题再用自身 slug 回验，对不上就
-**只保留条目链接、丢掉锚点**——落在页首，不会 404。
+正是靠这条避免错位）。换算出的中文标题再用自身 slug 回验；**对不上就保持外链**——
+``…/Riemann_hypothesis#CITEREFOdlyzko`` 这类锚点指向的是某条具体参考文献，
+降级成条目页首反而更差（英文/泰语镜像里这类 ``#CITEREF*`` 很多）。
+要降级成条目链接得显式加 ``--degrade-anchor``。
 
 用法::
 
@@ -51,6 +53,7 @@ import os
 import posixpath
 import re
 import sys
+import unicodedata
 from urllib.parse import unquote, urlsplit
 
 DOCS_DEFAULT = 'docs'
@@ -84,6 +87,8 @@ HEAD_RE = re.compile(r'^(#{2,6})\s+(.+?)\s*$')
 _SEG_SPLIT_RE = re.compile(r'[，,；;、]')
 # U+2010..U+2015 各种破折号；维基标题里 `Landau–Siegel` 用的是 U+2013
 _DASH_RE = re.compile(r'[\u2010-\u2015]')
+# github-slugger 删标点/符号，但这两个字符**保留**（实测 `_x_`→`_x_`、`a-b`→`a-b`）
+_SLUG_KEEP = frozenset('-_')
 
 
 # --------------------------------------------------------------------------- #
@@ -116,11 +121,44 @@ def anchor_candidates(frag):
 
 
 def slugify(s):
-    """贴近 github-slugger 的锚点算法（CJK 原样保留，与实测一致）。"""
-    s = s.strip().lower().replace("'", '').replace('\u2019', '')
-    s = _DASH_RE.sub('', s)
-    s = re.sub(r'[^\w\s-]', '', s, flags=re.UNICODE)
-    return re.sub(r'\s+', '-', s).strip('-')
+    """对齐 github-slugger：删标点/符号 → 每个空格换一个连字符 → 小写。不 trim。
+
+    规则不是猜的：读 `node_modules/github-slugger/index.js` 得到
+    `string.toLowerCase().replace(regex, '').replace(/ /g, '-')`，
+    regex 是 GitHub 自己生成的一张大字符类表（删标点/符号/控制符，
+    但**保留** `-` 和 `_`，也保留组合符号）。
+
+    **不能**用 `[^\\w\\s-]` 近似：泰语的元音/声调符号是 Mn 组合字符，`\\w` 不匹配，
+    会被当标点删掉——`#สมการเชิงฟังก์ชันของรีมันน` 变成 `#สมการเชงฟงกชนของรมนน`，
+    链接跳不到标题，而且肉眼根本看不出（泰语分支实测踩到）。
+    """
+    out = []
+    for ch in s.lower():
+        if ch == ' ':
+            out.append('-')
+        elif ch in _SLUG_KEEP:
+            out.append(ch)
+        elif unicodedata.category(ch)[0] not in ('P', 'S', 'C'):
+            out.append(ch)
+    return ''.join(out)
+
+
+def slug_headings(heads):
+    """[(层级, 标题)] → [slug]，并像 github-slugger 那样给重复标题加 -1/-2 后缀。
+
+    Docusaurus 每页一个 slugger 实例，同页里两处 `## 参见` 会得到 `参见` / `参见-1`；
+    对齐时若不复现这套后缀，第二处就会对不上。
+    """
+    seen, out = {}, []
+    for _, text in heads:
+        base = slugify(text)
+        if base in seen:
+            seen[base] += 1
+            out.append('%s-%d' % (base, seen[base]))
+        else:
+            seen[base] = 0
+            out.append(base)
+    return out
 
 
 def headings(text):
@@ -306,11 +344,12 @@ class AnchorResolver:
             except (UnicodeDecodeError, OSError):
                 en_text = zh_text = ''
             if en_text and zh_text:
-                for (el, et), (zl, zt) in zip(headings(en_text),
-                                              headings(zh_text)):
+                en_h, zh_h = headings(en_text), headings(zh_text)
+                en_s, zh_s = slug_headings(en_h), slug_headings(zh_h)
+                for (el, _), (zl, _), es, zs in zip(en_h, zh_h, en_s, zh_s):
                     if el != zl:
                         break        # 结构开始漂移，之后不再信任
-                    out[slugify(et)] = slugify(zt)
+                    out[es] = zs
         self.cache[ck] = out
         return out
 
@@ -341,7 +380,8 @@ def docs_map(docs_root, self_titles=False):
 
 
 def localize_text(text, path, docs_root=None, en_root=None, aliases_path=None,
-                  also_self_titles=False, include_footnotes=False, quiet=False):
+                  also_self_titles=False, include_footnotes=False,
+                  degrade_anchor=False, quiet=False):
     """把 ``text`` 里的 en.wikipedia 词条外链改写成站内链接，返回新文本。
 
     给 ``md2zh.py`` / ``wiki2md.py`` 在写盘前调用，这样**新生成的条目自动带上站内链接**，
@@ -358,7 +398,7 @@ def localize_text(text, path, docs_root=None, en_root=None, aliases_path=None,
     new, changes, skipped = rewrite_text(
         text, rel, docs_root, docs_map(docs_root, also_self_titles),
         load_aliases(aliases_path or ALIAS_DEFAULT),
-        AnchorResolver(docs_root, en_root), include_footnotes)
+        AnchorResolver(docs_root, en_root), include_footnotes, degrade_anchor)
     if changes and not quiet:
         print('→ 站内链接改写 %d 处（en.wikipedia → 本站条目）' % len(changes))
     return new
@@ -369,7 +409,7 @@ def localize_text(text, path, docs_root=None, en_root=None, aliases_path=None,
 # --------------------------------------------------------------------------- #
 
 def rewrite_text(text, rel, docs_root, mapping, aliases, anchors,
-                 include_footnotes=False):
+                 include_footnotes=False, degrade_anchor=False):
     """返回 (新文本, 改动列表, 未采用列表)。改动列表元素：(行号, 原文, 新文)。"""
     cur_dir = posixpath.dirname(rel)
     changes, skipped = [], []
@@ -410,9 +450,16 @@ def rewrite_text(text, rel, docs_root, mapping, aliases, anchors,
                         anchor = hmap[cand]
                         break
                 if not anchor:
+                    # 锚点换算不出来时**默认保持外链**：`…/Riemann_hypothesis#CITEREFOdlyzko`
+                    # 这种是指向某条具体参考文献的引用，降级成条目页首反而更差
+                    # （英文/泰语镜像里这类 #CITEREF* 很多）。要降级得显式开
+                    # --degrade-anchor。
+                    if not degrade_anchor:
+                        skipped.append((i, m.group(0),
+                                        '锚点 %r 无法换算 → 保持外链' % frag))
+                        return m.group(0)
                     skipped.append((i, m.group(0),
-                                    '锚点 %r 无法换算，已降级为条目链接'
-                                    % frag))
+                                    '锚点 %r 无法换算，已降级为条目链接' % frag))
 
             new = '[%s](%s%s)' % (disp, rel_link(cur_dir, target),
                                   '#' + anchor if anchor else '')
@@ -439,6 +486,9 @@ def main(argv=None):
                     help='把每个条目自己的文件名也当作英文名加进映射（英文/泰语站用）')
     ap.add_argument('--include-footnotes', action='store_true',
                     help='连脚注定义里的引用来源一起改写（默认不动）')
+    ap.add_argument('--degrade-anchor', action='store_true',
+                    help='锚点换算不出来时降级为条目链接（默认保持外链，'
+                         '因为 #CITEREF* 这类引用锚点降级反而更差）')
     ap.add_argument('--dry-run', action='store_true', help='只列出，不写盘')
     ap.add_argument('--check', action='store_true',
                     help='有需要改的就返回 1（不写盘），给 CI / 预检用')
@@ -479,7 +529,7 @@ def main(argv=None):
         rel = os.path.relpath(p, args.docs_root).replace('\\', '/')
         new, changes, skipped = rewrite_text(
             text, rel, args.docs_root, mapping, aliases, anchors,
-            args.include_footnotes)
+            args.include_footnotes, args.degrade_anchor)
         if args.json:
             if changes:
                 json_out['files'][rel] = [[ln, b, a] for ln, b, a in changes]

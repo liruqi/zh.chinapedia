@@ -15,6 +15,10 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wikilink_localize as W                                  # noqa: E402
 
+DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'docs')
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+
 fail = 0
 
 
@@ -59,11 +63,82 @@ check('大小写等价', W.normalize('Twin_prime'), W.normalize('twin prime'))
 check('破折号归一', W.normalize('Landau%E2%80%93Siegel_zero'),
       'landau-siegel zero')
 
-print('\n--- slugify ---')
-check('英文标题', W.slugify("Riemann's functional equation"),
-      'riemanns-functional-equation')
-check('CJK 原样保留', W.slugify('推论'), '推论')
-check('en dash 去掉', W.slugify('Lee–Yang theorem'), 'leeyang-theorem')
+print('\n--- slugify（必须与 github-slugger 逐字一致）---')
+# 期望值全部来自真 `github-slugger`（node -e "new S().slug(...)"）的实测输出，
+# 不是照着自己的实现反推的。规则见 node_modules/github-slugger/index.js：
+#   string.toLowerCase().replace(regex, '').replace(/ /g, '-')
+# 即「删标点/符号/控制符，但保留 - 和 _」+「每个空格换一个连字符」+「不 trim」。
+SLUG_CASES = [
+    ("Riemann's functional equation", 'riemanns-functional-equation'),
+    ('Lee–Yang theorem', 'leeyang-theorem'),
+    ('推论', '推论'),
+    ('点a,b', '点ab'),
+    ('x: y?', 'x-y'),
+    ('1+1 = 2', '11--2'),
+    ('a\u2018b', 'ab'),
+    (' x ', '-x-'),                 # 不 trim
+    ('a  b', 'a--b'),               # 不合并空白：两个空格 → 两个连字符
+    ('--a--', '--a--'),
+    ('_x_', '_x_'),                 # 下划线保留（不是「删所有标点」）
+    ('a-b', 'a-b'),                 # 连字符保留
+    ('$D \\lt 0$', 'd-lt-0'),
+    # 泰语元音/声调符号是 Mn 组合字符。用 [^\w\s-] 近似会把它们当标点删掉，
+    # 锚点跳不到标题还看不出错（泰语分支实测踩到）
+    ('สมการเชิงฟังก์ชันของรีมันน', 'สมการเชิงฟังก์ชันของรีมันน'),
+    ('จุดไวยากรณ์', 'จุดไวยากรณ์'),
+    ('ข้อความคาดการณ์ของเกาส์', 'ข้อความคาดการณ์ของเกาส์'),
+]
+for text, want in SLUG_CASES:
+    check('slug %r' % text[:26], W.slugify(text), want)
+
+print('\n--- slug_headings（重复标题要加 -1 后缀）---')
+check('重复标题',
+      W.slug_headings([(2, '参见'), (2, '参见'), (2, '参见'), (2, '其他')]),
+      ['参见', '参见-1', '参见-2', '其他'])
+check('不重复', W.slug_headings([(2, 'A'), (3, 'B')]), ['a', 'b'])
+
+print('\n--- slugify 差分测试（对真 github-slugger）---')
+# 上面是「想得到的」用例；这里拿仓库里所有真实标题 + 一批刁钻样本跟真库逐条对比，
+# 抓的是「没想到的那种偏离」。找不到 node / github-slugger 就安静跳过。
+import glob                                                     # noqa: E402
+import json                                                     # noqa: E402
+import shutil                                                   # noqa: E402
+import subprocess                                               # noqa: E402
+
+NODE = shutil.which('node')
+MODULES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       'node_modules')
+if NODE and os.path.isdir(os.path.join(MODULES, 'github-slugger')):
+    heads = []
+    for p in glob.glob(os.path.join(DOCS, '**', '*.md'), recursive=True):
+        if os.sep + 'wow' + os.sep in p:
+            continue
+        heads.extend(t for _, t in W.headings(open(p, encoding='utf-8').read()))
+    extra = ["Riemann's functional equation", 'Lee–Yang theorem', '点a,b', 'x: y?',
+             '1+1 = 2', ' x ', 'a  b', '--a--', '_x_', 'a-b', '$D \\lt 0$',
+             'สมการเชิงฟังก์ชันของรีมันน', 'จุดไวยากรณ์', 'ข้อความคาดการณ์ของเกาส์',
+             'A_1 & B+2', '50%', '±x', '日本語・中文']
+    heads.extend(extra)
+    payload = json.dumps([[t, W.slugify(t)] for t in heads], ensure_ascii=False)
+    script = (
+        "const S=require('github-slugger');"
+        "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+        "let bad=0;"
+        "for(const [t,py] of d){const js=new S().slug(t);"
+        "if(js!==py){bad++;console.log(JSON.stringify([t,js,py]));}}"
+        "console.log('BAD='+bad);"
+    )
+    env = dict(os.environ, NODE_PATH=MODULES)
+    r = subprocess.run([NODE, '-e', script], input=payload, env=env,
+                       capture_output=True, text=True, encoding='utf-8')
+    lines = [l for l in r.stdout.splitlines() if l.startswith('BAD=')]
+    bad = int(lines[0][4:]) if lines else -1
+    if bad < 0:
+        print('跳过（node 调用失败）:', (r.stderr or '').splitlines()[:1])
+    else:
+        check('与 github-slugger 一致（%d 条）' % len(heads), bad, 0)
+else:
+    print('跳过（没有 node 或 github-slugger）')
 
 print('\n--- anchor_candidates ---')
 # 维基用下划线代替空格，github-slugger 产出连字符，两种都得试
@@ -105,8 +180,6 @@ check('简称也算英文名',
 check('中文括号不误收', W.article_en_names('**ζ函数**（即黎曼的函数）'), [])
 
 print('\n--- derive_map（真 docs 目录）---')
-DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    'docs')
 if os.path.isdir(DOCS):
     m, collisions = W.derive_map(DOCS)
     want = {
@@ -175,6 +248,15 @@ check('%23 锚点换算', t, '[格拉姆点](./黎曼猜想.md#格拉姆点)')
 t, _, _ = run('[孪生素数猜想](https://en.wikipedia.org/wiki/twin_prime_conjecture)')
 check('别名带锚点', t, '[孪生素数猜想](./孪生素数.md#孪生素数猜想)')
 
+# 锚点换算不出来时默认保持外链：`#CITEREF*` 这类指向具体参考文献，降级更差
+CIT = ('[(Odlyzko)](https://en.wikipedia.org/wiki/'
+       'Riemann_hypothesis#CITEREFOdlyzko)')
+t, ch, sk = run(CIT)
+check('锚点换算不出 → 保持外链', t, CIT)
+check('锚点换算不出 → 无改动', ch, [])
+t, ch, _ = run(CIT, degrade_anchor=True)
+check('--degrade-anchor 才降级', t, '[(Odlyzko)](./黎曼猜想.md)')
+
 # 站内没有译好的版本 → 一个字都不动
 EXT = '[戴德金ζ函数](https://en.wikipedia.org/wiki/Dedekind_zeta_function)'
 t, ch, sk = run(EXT)
@@ -222,7 +304,6 @@ if os.path.isdir(DOCS):
           '[A](https://en.wikipedia.org/wiki/Riemann_zeta_function)')
 
     # 生成端必须挂着钩子，否则重新生成条目时外链会复发（脚注间距踩过同样的坑）
-    SCRIPTS = os.path.dirname(os.path.abspath(__file__))
     for name in ('md2zh.py', 'wiki2md.py'):
         src = open(os.path.join(SCRIPTS, name), encoding='utf-8').read()
         check('%s 挂了改写钩子' % name,
