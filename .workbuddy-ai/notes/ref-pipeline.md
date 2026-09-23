@@ -130,11 +130,22 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
    写成 `文字[URL]` 让链接失效（`repair_bracket_urls()`）、**丢掉标题里的 `\<` 转义**
    （`escape_heading_angles()` —— 标题裸尖括号会让**整站构建失败**）。
 
-### 收尾必跑的两个校验
+### 收尾必跑的校验（由快到慢，前三步必跑）
 
-- `scripts/check_translation.py <原稿目录> <译稿目录> --lang th`：整篇逐项对账
-- `node scripts/prebuild_check.mjs <译稿目录>`：MDX / KaTeX / 脚注 / 裸 URL
-- `python scripts/test_fix_footnotes.py`：39 条回归用例
+1. `python scripts/check_translation.py <原稿目录> <译稿目录> --lang th`
+   —— 整篇逐项对账（行数 / `$$` / `$` 逐行配对 / 脚注标记与定义 / figure 与
+   figcaption / 表格行数 / 相邻脚注间距 / 残留 / 应译行是否真译）
+2. `node scripts/prebuild_check.mjs <译稿目录>` —— MDX 裸 `{}` 与标题裸尖括号、
+   KaTeX 未定义宏、脚注引用与定义对得上、裸 URL
+3. `python scripts/test_fix_footnotes.py` —— 39 条回归用例
+4. `node scratch/_mdxrun.mjs <file>` —— **真求值**编译产物，抓 `ReferenceError`
+   （静态检查过不了这一关：`{expr}` 只在运行时炸）
+5. `node scratch/_figcheck.mjs <file>` —— 真 MDX 树里数 figure / figcaption / img，
+   应与原稿相等（纯 remark 管线会把裸 HTML 丢掉，得到假阴性）
+6. `node scratch/_macroscan.mjs <目录>` —— 公式总数与 KaTeX 报错数（应为 0）
+
+泰语三篇的实测结果：`_mdxrun` 全 OK、figure 0/6/6 与原稿一致、
+`_macroscan` 812 条公式 0 报错。
 
 ### 泰语术语表要人工收敛
 
