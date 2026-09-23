@@ -22,6 +22,38 @@
 公式默认 KaTeX（`$…$` / `$$…$$`），`--no-katex` 退回行内代码；KaTeX 模式自动跑
 `escape_dollar_in_urls()` + `fix_github_math()`。
 
+## 新增一篇条目（三语言）的固定流程
+
+以 Goldbach's conjecture（2026-09-23）为例：英文 → 中文 + 泰语。
+
+1. **普查**：拉 wikitext，数图片 / `<ref>` / 章节（照 `scratch/_fetch.py` 写个小脚本）。
+2. **英文稿**（机械，不调 LLM）：`wikitext2md.py <url> -o scratch/<x>_en.md`
+3. **搬图**：`wikiimg2r2.py scratch/<x>_en.md --prefix docs/math`
+   —— `--prefix` **必须显式给**：默认按 md 所在目录推导，稿子在 `scratch/` 下就会
+   传成 `scratch/` 而不是 `docs/math/`。
+4. **figure 化**：`img2figure.py scratch/<x>_en.md`
+   —— **不要**带 `--from-wikitext`：那个模式只给**已有** `<figure>` 回填 maxWidth，
+   不新建 figure，会报「(无改动)」让人以为图没问题。
+5. **收尾**：删空的 `## References`、把脚注定义的续行并回一行（见上一节）。
+6. **英文稿落地**：en 仓 `main`，文件名去掉撇号、下划线分词
+   （`Goldbach's conjecture` → `goldbachs_conjecture.md`）。
+7. **译中文**：
+   `md2zh.py <en 稿> -o docs/math/<中文名>.md --to zh --title <中文名> \
+   --base-url https://lms.thaiwen.com/v1 --state scratch/_x_zh.state.json`
+8. **译泰语**：en 仓切到 `th` 分支，输出**同名**文件（便于 `git diff main..th`）。
+9. **站内链接**：en 仓两次（`main` / `th`）各跑一次
+   `wikilink_localize.py . --docs-root . --en-root <英文树> --aliases "" --also-self-titles`
+   —— 泰语分支要先把 `main` `git archive` 到临时目录当 `--en-root`（否则拿泰语标题
+   对泰语标题，锚点算不出来）；zh 仓用默认 `docs` 与默认别名表。
+10. **校验**（顺序由快到慢）：`check_translation.py` → `prebuild_check.mjs` →
+    `test_fix_footnotes.py` → `_mdxrun.mjs` → `_figcheck.mjs` → `_macroscan.mjs`。
+11. **扫人名一致性**——**别省**：同一实体全篇只能有一种中文/泰文写法。
+    本文实测：`Goldbach` 在中文稿里同时是「哥德巴赫 / 高尔达赫 / 高斯」，
+    泰语稿里同时是 `ก็อลท์บัค / โกลด์แบค`。术语表被 API 封住时必然出现。
+12. **提交**：zh 仓按「工具 / 内容」分 1~2 个 commit；en 仓 `main` 与 `th` 各一个，
+    都推。收尾看 `git diff --stat main..th` 的**增删行数对称**（逐行对应，
+    本文是 804/804）。
+
 ## 链接与脚注
 
 - 维基链接**保持行内**；**其他外链改 GFM 脚注**（同一 URL 复用同一编号）。
@@ -58,6 +90,21 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
   早先 `if hits > 5: print('另有 %d 处' % (hits-5))` 把处数当行数减，6 处 2 行会输出
   「另有 1 处」，读起来像还有第 7 处。
 
+## wikitext2md.py 的收尾残留（每篇新条目都要看一眼）
+
+机械转换出来的稿子有两类残留，`prebuild_check` 抓不到（不违反 MDX 硬约束，只是难看）：
+
+1. **空的 `## References`**：wikitext 的 `==References==` 节里往往只有 `{{Reflist}}`
+   （Notes 节同理，只有 `{{Notelist}}`），而 `<ref>` / `{{efn}}` 已被转成脚注定义、
+   统一挂在 `## Notes` 下 → 这个标题下面必然是空的。**删掉标题**。
+2. **脚注定义的续行没有缩进**：`<ref>` 内容里带换行时，第二行会原样落在 `[^n]:`
+   定义行的下一行且不缩进 → GFM 认为定义到此结束，多出一段游离正文。
+   仓库约定是**一条定义一行**（三篇基线稿的缩进续行数都是 0）→ 并回上一行，
+   别加 4 空格缩进。
+
+另有一个**已知且一致**的残留：`==External links==` 里 `*{{Commons category-inline}}`
+会变成一行孤立的 `*`（三篇基线稿都有）→ 保持原样，别单篇"修好"。
+
 ## 词条外链改走站内链接（`scripts/wikilink_localize.py`）
 
 站内已有译好的条目时，正文里的 `[黎曼ζ函数](https://en.wikipedia.org/wiki/Riemann_zeta_function)`
@@ -89,6 +136,17 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
 
 `scripts/wikilink-aliases.json` 补重定向别名（值可带锚点）：
 `"twin prime conjecture": "math/孪生素数.md#孪生素数猜想"`。
+
+**撇号在归一化时被抹掉**（`_APOSTROPHE_RE`）：维基标题 `Goldbach's_conjecture`
+对应文件名 `goldbachs_conjecture.md`（文件名通常不写撇号），不抹掉就永远对不上。
+但**重定向写法仍要手补别名**——维基 `Goldbach_conjecture` 去掉撇号后是
+`goldbach conjecture`，与条目自己声明的 `Goldbach's conjecture` 不同名，
+自动推导看不到它。
+
+**扫外部目录时不能带本仓别名表**：`prebuild_check.mjs` 第 7 项现在会判断——
+根目录不是本仓 `docs/` 时，改用该目录自身当 `--docs-root` 且 `--aliases ""`。
+否则本仓别名表里的 zh 路径会被套到别的仓上，报出「外链本可走站内」的假阳性。
+手动跑的时候同样要带：`--docs-root . --en-root . --aliases "" --also-self-titles`。
 
 ### 锚点换算
 
@@ -307,6 +365,15 @@ python scripts/wikiterm.py --lang th --scan <dir>         # 泰语（en.wikipedi
 - **简繁转换用 `zh.wikipedia.org` 的 `action=parse&variant=zh-cn`，必须分批（40 条）**，
   一次几百行整批退回原文。`converttitles` 靠不住。
 - **维基 API 会 429**：限速 ≥1.2s/次 + 按 `Retry-After` 退避。
+- **维基 API 还会 403 封 IP**（`Please respect our robot policy`）。2026-09-23 一次
+  `wikiterm.py --scan` 要解析 515 个标题（缓存只命中 297）后，**en / zh / wikidata /
+  REST 全部主机**都开始 403，持续 1 小时以上未恢复。后果不是"查不到译名"这么轻：
+  人名白名单缺条目后，模型会**自己编**——`Christian Goldbach` 被译成「高尔达赫」，
+  而 `Goldbach` 单独出现时被译成「**高斯**」（英文原稿里 Gauss 出现 0 次），
+  同一篇里同一个人三种写法。
+  → 扫描前先把标题量压下来（分批、只扫新条目）；被封了就把该条目的译名核对
+  往后放，别指望模型自己扛住。
+  → 译完**必须扫人名一致性**：同一实体的中文写法在同一篇里只应有一种。
 - **别在 `npm run build` 期间查**：网络同时跑构建必 RST（WinError 10054）。
 - 缓存键**按小写去重**（维基标题大小写等价）；变体里留"句子式大小写"那个。
 - 改完用中英混排正则扫残留：`[\u4e00-\u9fff]\s?([A-Za-z][A-Za-z\-']{2,})\s?[\u4e00-\u9fff]`
