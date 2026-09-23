@@ -120,6 +120,37 @@ for line, want, desc in URL_CASES:
     if not ok:
         print("      期望 %s" % want[:70])
 
+print()
+
+MATH_CASES = [
+    ("  $\\Pi_0(x) = \\operatorname{li}(x) - \\sum_\\rho \\operatorname{li}(x^\\rho)$,", True,
+     "整行公式 → verbatim"),
+    ("$x$", True, "单个行内公式 → verbatim"),
+    ("$$", True, "只有 $$ → verbatim"),
+    ("where $x$ is the value", False, "带正文 → 要译"),
+    ("* $w_D$ is the number of roots", False, "列表里的公式+正文 → 要译"),
+    ("plain text no math", False, "没有 $ → 要译"),
+    ("$Z$-function 见下", False, "公式后还有正文 → 要译"),
+]
+for s, want, desc in MATH_CASES:
+    got = md2zh.is_math_only(s)
+    ok = got == want
+    fail += 0 if ok else 1
+    print("%s %-28s %s" % ("✓" if ok else "✗", desc, got))
+
+BAL_CASES = [
+    (["a $x$ b"], ["ก $x$ ข"], True, "都成对"),
+    (["a $x$ b"], ["ก $x ข"], False, "译文缺一个 $ → 判为截断"),
+    (["a $x$ b", "c"], ["ก $x$ ข", "ค"], True, "两行都成对"),
+    (["a $x$ b"], ["ก $x$ ข", "ค"], False, "行数不等"),
+]
+for src, out, want, desc in BAL_CASES:
+    got = md2zh.dollars_balanced(src, out)
+    ok = got == want
+    fail += 0 if ok else 1
+    print("%s %-28s %s" % ("✓" if ok else "✗", desc, got))
+
 print("\n失败 %d / %d" % (fail, len(CASES) + len(LINK_CASES) + len(HEAD_CASES)
-                          + len(ECHO_CASES) + len(URL_CASES)))
+                          + len(ECHO_CASES) + len(URL_CASES)
+                          + len(MATH_CASES) + len(BAL_CASES)))
 sys.exit(1 if fail else 0)

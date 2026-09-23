@@ -268,6 +268,21 @@ def system_with(text, terms, base=None, L=None):
 
 # --------------------------------------------------------------------------- 切块
 
+def is_math_only(s):
+    """整行只有公式（把 `$…$` / `$$…$$` 抠掉后没有正文）→ 原样照抄，不送模型。
+
+    实测：纯公式行送进模型会被"译"成半截 —— 一行
+    `  $\\Pi_0(x) = \\operatorname{li}(x) - \\sum_\\rho … \\log t}$,`
+    回来只剩 `$\\Pi_0(x) = \\operatorname{li}(x) - \\sum_\\rho \\operatorname{li}(x^\\`，
+    行数照样是 1 行（单行 chunk 的行数守卫恒真），但 `$` 不配对，
+    页面上后面一大段会被吃进公式里。
+    """
+    if "$" not in s:
+        return False
+    rest = re.sub(r"\${1,2}[^$]*\${1,2}", " ", s)
+    return not re.search(r"[A-Za-z\u4e00-\u9fff\u0e00-\u0e7f]{2,}", rest)
+
+
 def split_blocks(lines):
     """把 Markdown 切成 (kind, [lines]) 序列；kind ∈ {verbatim, text}。
 
@@ -311,6 +326,10 @@ def split_blocks(lines):
         # 不能交给模型：实测单行 <figcaption> 会被"解释"成
         # `**<figcaption>** (caption) คือข้อความที่ใช้อธิบายภาพหรือตาราง` 这种定义句。
         if re.fullmatch(r"</?[A-Za-z][^<>]*/?>", s):
+            blocks.append(("verbatim", [line]))
+            i += 1
+            continue
+        if is_math_only(s):                             # 纯公式行：照抄
             blocks.append(("verbatim", [line]))
             i += 1
             continue
@@ -538,16 +557,33 @@ def text_prompt(safe, L=None):
 
 
 def translate_line(cfg, line, terms=None, L=None):
-    """逐行翻译兜底：保证一行进、一行出。"""
+    """逐行翻译兜底：保证一行进、一行出。
+
+    最后一道防线：译文的 `$` 若跟原文不配对（回复被截断），宁可退回**原文**——
+    半截公式会把后面一大段正文吃进公式里，比留一句英文糟得多。
+    """
     L = L or LANGS["zh"]
-    try:
-        out = _ask(cfg, system_with(line, terms, L=L), line, L)
-    except Exception:                                    # noqa: BLE001
-        return line
-    first = [l for l in out.split("\n") if l.strip()]
-    if not first:
-        return line
-    return first[0]
+    for _ in range(2):
+        try:
+            out = _ask(cfg, system_with(line, terms, L=L), line, L)
+        except Exception:                                # noqa: BLE001
+            return line
+        first = [l for l in out.split("\n") if l.strip()]
+        if first and dollars_balanced([line], [first[0]]):
+            return first[0]
+    return line
+
+
+def dollars_balanced(src_lines, out_lines):
+    """逐行比 `$` 的奇偶：模型把回复截断时，最常见的外显症状就是某行 `$` 不配对。
+
+    单行 chunk 尤其危险——行数守卫 `out.count("\\n") + 1 == n` 对 1 行输入**恒真**，
+    截断的回复照样"通过"。泰语猜想稿 2 处就是这么漏过去的（110 / 112 号 chunk）。
+    """
+    if len(src_lines) != len(out_lines):
+        return False
+    return all(a.count("$") % 2 == b.count("$") % 2
+               for a, b in zip(src_lines, out_lines))
 
 
 def translate_chunk(cfg, text, tries=3, terms=None, L=None):
@@ -580,7 +616,8 @@ def translate_chunk(cfg, text, tries=3, terms=None, L=None):
                  {"role": "user", "content": text_prompt(safe, L)}],
                 temperature=0.2, timeout=tmo)
             out = restore(clean_reply(reply), urls)
-            if out.count("\n") + 1 == n:                 # 行数必须对得上
+            # 行数必须对得上，且每行的 $ 要成对（防截断回复）
+            if out.count("\n") + 1 == n and dollars_balanced(lines, out.split("\n")):
                 return out
             last = out
             if n <= 2 and i >= 1:                        # 短段落重试一次没用，直接逐行
