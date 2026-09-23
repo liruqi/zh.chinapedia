@@ -110,6 +110,11 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
     先查 `build/` 的 mtime 是不是比源码旧。
 13. 删构建目录时 `rm -rf build-*` 会被安全删除策略拦（`SAFE_DELETE_FAIL_CLOSED … trash-failed` /
     `SAFE_DELETE_BULK_CONFIRM_REQUIRED`）→ 改用 Python `shutil.rmtree`，或直接换新的 `--out-dir`。
+14. **判断「删干净了没」不能看 `echo`**。踩过：写的是
+    `rm -rf build-slim && ls -d build-slim 2>/dev/null; echo "removed" && …`——
+    **`;` 让 `echo "removed"` 无条件执行**，看着像删成功了，实际 `build-slim` 还在
+    （158 个文件、mtime 还是上次构建的），于是下一次构建又撞上 safe-delete。
+    → 判据用 `test ! -d build-slim`，并且全程用 `&&` 串起来（删不掉就别往下跑）。
 
 ## 部署现状
 
