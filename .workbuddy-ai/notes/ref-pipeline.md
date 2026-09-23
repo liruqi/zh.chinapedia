@@ -14,6 +14,10 @@
 | `fix_footnote_spacing.py` | 相邻脚注标记间距（见下） |
 | `wikiimg2r2.py` / `img2figure.py` | 搬图 / figure 化（见 `ref-site.md`） |
 | `wikiterm.py` | 专有名词译名查询（见下） |
+| `wikilink_localize.py` | 指向 `en.wikipedia` 的词条外链改走站内相对链接（见下） |
+| `check_translation.py` | 整篇译文校验（行数 / `$$` / 脚注 / figure / 表格 / 应译行是否真译），`--lang zh\|th` |
+| `test_fix_footnotes.py` / `test_wikilink_localize.py` | 回归用例（后者含对真 github-slugger 的差分测试） |
+| `prebuild_check.mjs` | 发布前预检（`npm run check`），7 项 |
 
 公式默认 KaTeX（`$…$` / `$$…$$`），`--no-katex` 退回行内代码；KaTeX 模式自动跑
 `escape_dollar_in_urls()` + `fix_github_math()`。
@@ -53,6 +57,88 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
 - 报告里**「处数」和「行数」要分开说**：多数一处一行，但也有 `[^11][^12][^13]` 一行 2 处的。
   早先 `if hits > 5: print('另有 %d 处' % (hits-5))` 把处数当行数减，6 处 2 行会输出
   「另有 1 处」，读起来像还有第 7 处。
+
+## 词条外链改走站内链接（`scripts/wikilink_localize.py`）
+
+站内已有译好的条目时，正文里的 `[黎曼ζ函数](https://en.wikipedia.org/wiki/Riemann_zeta_function)`
+应改成 `[黎曼ζ函数](./黎曼ζ函数.md)`。**只换 URL，显示文字一个字不动。**
+
+    python scripts/wikilink_localize.py docs --dry-run   # 只列出
+    python scripts/wikilink_localize.py docs --check     # 有需要改的返回 1
+    python scripts/wikilink_localize.py docs             # 就地改
+    python scripts/wikilink_localize.py --map            # 打印映射表
+
+已挂钩子：`md2zh.py` / `wiki2md.py` 写盘前调 `localize_text()`；
+`prebuild_check.mjs` 第 7 项「外链本可走站内」（调 `--json`）拦手工加的。
+
+### 映射表怎么来的（不猜、不联网）
+
+只认条目**开头段**（第一个 `##` 之前）自己声明的英文名：
+
+- `**词条名**（英语：X）` / `**词条名**（X）` —— 粗体挂着的，**全部**收下
+  （西格尔零点.md 一条粗体链声明了 `Landau–Siegel zero` / `Siegel zero` / `exceptional zero`）；
+- `（英语：X）` —— **只取第一处**；
+- `…，简称 AIGC` —— 缩写也算。
+
+**为什么只取第一处**：`（英语：X）` 在正文里会反复出现。黎曼ζ函数.md 有十几处
+（`Leonhard Euler`、`polylogarithm`、`critical line theorem`…），全收就会把
+`en.wikipedia.org/wiki/Leonhard_Euler` 指到本条目自己身上。
+
+**开头段不能只取前 N 行**：黎曼ζ函数.md 开篇先是 `<div className="figure-row">` 图块，
+声明落在第 **33** 行，卡 30 行整条映射就没了。现在的实现只按「第一个 `##`」截断。
+
+`scripts/wikilink-aliases.json` 补重定向别名（值可带锚点）：
+`"twin prime conjecture": "math/孪生素数.md#孪生素数猜想"`。
+
+### 锚点换算
+
+`…/wiki/Riemann_hypothesis#Consequences` → `./黎曼猜想.md#推论`。靠**中英两版标题序列对齐**：
+`en.chinapedia/docs/<英文名>.md` 存在时逐条比对，**从第一条层级对不上的地方停止信任**
+（黎曼猜想.md 尾部 EN 有 `## Notes` 而中文版没有，正是靠这条避免错位）。
+
+三个坑：
+
+1. **中英文件名不一样**（`riemann_hypothesis.md` vs `黎曼猜想.md`）→ 不能按路径配对，
+   要用映射里记着的英文名去拼英文镜像路径（大小写也试一遍）。
+2. **维基锚点有两种写法**：`#Consequences`（真 fragment）和 `%23Consequences`
+   （躺在 path 里、`urlsplit` 的 fragment 是空的）。数据里**后者更多**，
+   所以先把 path 解码再切 `#`。
+3. **维基用下划线代替空格**，github-slugger 产出连字符 → `anchor_candidates()` 两种都试。
+
+**换算不出来时默认保持外链**，不降级：`#CITEREFOdlyzko` 这类指向某条具体参考文献，
+改成条目页首反而更差（英文/泰语镜像里各 9/8 处）。要降级得 `--degrade-anchor`。
+
+脚注定义行（`[^3]: [https://…](…)`）是**引用来源**，默认不动——改成站内链接等于「引用自己」。
+
+### 要跟第三方库逐字一致时，别近似（`slugify` 的教训）
+
+`slugify` 原用 `[^\w\s-]` 近似 github-slugger。中文没事，**泰语全错**：
+元音/声调符号是 Mn 组合字符、`\w` 不匹配 → 被当标点删掉，
+`#สมการเชิงฟังก์ชันของรีมันน` 变成 `#สมการเชงฟงกชนของรมนน`，
+链接跳不到标题而且**肉眼完全看不出**。
+
+真规则在 `node_modules/github-slugger/index.js`（v1.5.0）：
+
+    string.toLowerCase().replace(regex, '').replace(/ /g, '-')
+
+`regex` 是 GitHub 生成的一张大字符类表，不能手抄。等价判据：**按 Unicode 类别删 P/S/C，
+但保留 `-` 和 `_`**（实测 `_x_`→`_x_`、`--a--`→`--a--`），外加 **不 trim**（`' x '`→`-x-`）、
+**不合并空白**（`a  b`→`a--b`）、**只有普通空格 U+0020** 换 `-`。
+还要复现同页**重复标题的 `-1`/`-2` 后缀**（Docusaurus 每页一个 slugger 实例）→ `slug_headings()`。
+
+**验证**：拿真 `github-slugger` 对仓库全部真实标题 + 刁钻样本做**差分测试**，
+303 条 0 条不一致；该用例已进 `test_wikilink_localize.py`（node 不在就跳过）。
+
+### 用到别的仓时
+
+`chinapedia/math`（`en.chinapedia/docs/math`，英文 `main` + 泰语 `th`）：
+
+    python <zh>/scripts/wikilink_localize.py . --docs-root . --en-root . \
+        --aliases "" --also-self-titles
+
+- `--also-self-titles`：文件名即英文名（该仓条目开头没有 `（英语：）`）；
+- `--en-root .`：英文稿自身对齐（泰语分支要先把 `main` `git archive` 到临时目录再指过去）；
+- `--aliases ""`：别名表里是 zh 的路径，别带过去。
 
 ## 中文条目文风
 

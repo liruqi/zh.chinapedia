@@ -11,6 +11,7 @@
 |---|---|
 | `.workbuddy-ai/notes/ref-pipeline.md` | 脚本分工、链接/脚注（含相邻标记间距）、文风、多语言化、LLM 翻译四错、§ 两阶段人工流水线、译名与人名白名单 |
 | `.workbuddy-ai/notes/ref-site.md` | MDX/KaTeX 坑、`npm run check` 校验、完整构建配方、部署现状、图片 R2 与插图限高 |
+| `.workbuddy-ai/notes/log-archive/INDEX.md` | 历史日志归档索引（`memory/` 只留当天日志，旧的搬过去） |
 
 ## 必须时刻记住的硬约束
 
@@ -40,9 +41,19 @@
     → 改文件用 Edit/Write 工具（不走 shell，不会被重试），提交单独一条命令；
     必须用 shell 追加时先 `grep -q '<块标题>' file || cat >> file`。
     → 判断提交是否成功**看 `git log`，不要看退出码**（重试那次会报 `nothing to commit`）。
-12. **`memory/` 目录是每次会话整体自动注入的**（不只是 MEMORY.md）。细节笔记一律放
-    `.workbuddy-ai/notes/`，**别放回 `memory/`**：放回去会把注入预算撑爆、内容被截断，
-    等于白写（踩过一次：MEMORY.md + 4 个 ref-*.md ≈ 16 KB 被截断）。
+12. **`memory/` 目录是每次会话整体自动注入的**（不只是 MEMORY.md），总预算约 10 KB。
+    细则：`memory/` 只放 **MEMORY.md + 当天日志**；细节笔记放 `.workbuddy-ai/notes/`；
+    过期日志 `mv` 到 `notes/log-archive/`（**搬家不删**，索引见该目录 `INDEX.md`）。
+    超预算的后果是**内容被静默截断**，等于白写（踩过两次：ref-*.md 共 16 KB 那次，
+    以及 4 份历史日志共 82 KB 那次）。写完日志/笔记顺手 `wc -c memory/*.md` 看一眼。
+13. **正文里指向 `en.wikipedia.org/wiki/<条目>` 的链接，站内已有译好版本时要改走站内
+    相对链接**（`./黎曼ζ函数.md`，可带中文锚点）。工具 `scripts/wikilink_localize.py`；
+    `md2zh.py` / `wiki2md.py` 已挂钩子，`npm run check` 第 7 项会拦手工加的。
+    规则细节见 `notes/ref-pipeline.md`。
+14. **要跟某个第三方库逐字一致时（如锚点 slug），别近似——去读它的源码，然后做差分测试。**
+    踩过：用 `[^\w\s-]` 近似 github-slugger，中文没事但**泰语元音/声调符号是 Mn 组合字符，
+    会被当标点删掉**，锚点静默失效。真规则：删 P/S/C 类但保留 `-` `_`、不 trim、
+    不合并空白、只有普通空格换 `-`。
 
 ## 环境
 
