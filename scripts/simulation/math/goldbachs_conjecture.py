@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 OUTPUT = Path(__file__).resolve().parent / "goldbachs_conjecture.gif"
 
-N_MAX = 50
+N_MAX = 100
 FPS = 12
 MOVE_FRAMES = 3
 BLUE_FRAMES = 4
@@ -105,23 +105,25 @@ for frame in range(N_MAX * STAGE_FRAMES):
     d.line((MARGIN, y0, W-MARGIN, y0), fill=(35,35,35), width=2)
     d.line((x0, MARGIN, x0, H-MARGIN), fill=(35,35,35), width=2)
 
-    # Smaller persistent orange points
+    # Smaller persistent orange points (y=2 and x>0 are green)
     for x, y in orange_now:
         px, py = xy(x, y)
         r = 2.2
-        d.ellipse((px-r, py-r, px+r, py+r), fill=(251,140,0))
+        if y == 2 and x > 0:
+            color = (0, 180, 0)  # green
+        else:
+            color = (251, 140, 0)  # orange
+        d.ellipse((px-r, py-r, px+r, py+r), fill=color)
 
-    # Axis points, reduced radius
+    # Axis points, reduced radius. 合数（灰色）不再画出来。
     for n in range(2, N_MAX + 1):
+        if n in dead_now:
+            continue
+
         px, _ = xy(n, 0)
         _, py = xy(0, n)
-
-        if n in dead_now:
-            c = (102,107,112)
-            cyellow = (102,107,112)
-        else:
-            c = (229,57,53)
-            cyellow = (253,216,53)
+        c = (229,57,53)
+        cyellow = (253,216,53)
 
         r = 2.8
         d.ellipse((px-r,y0-r,px+r,y0+r), fill=c)
@@ -142,7 +144,7 @@ for frame in range(N_MAX * STAGE_FRAMES):
         bbox = d.textbbox((0, 0), label, font=small)
         tw = bbox[2] - bbox[0]
         tx = px - tw / 2
-        ty = y0 + 14
+        ty = y0 + 6
         # Only draw if it doesn't overlap the cursor (cursor body starts at y0+8)
         # Place label just below axis, cursor is further down
         d.text((tx, ty), label, fill=(229, 57, 53), font=small)
@@ -178,6 +180,30 @@ for frame in range(N_MAX * STAGE_FRAMES):
         r = 4
         d.ellipse((gx-r, gy-r, gx+r, gy+r), fill=(25,118,210))
 
+    # Even subscripts on y-axis: show even n > 2 on the right side of y-axis
+    # after the corresponding blue line has been completed
+    if p is not None:
+        if p >= 4 and p % 2 == 0 and blue_progress is not None:
+            completed_even_set = set(range(4, p, 2))
+        else:
+            completed_even_set = set(range(4, p + 1, 2))
+    else:
+        completed_even_set = set()
+
+    for n in range(4, N_MAX + 1, 2):
+        if n not in completed_even_set:
+            continue
+        if n % 10 != 0:  # y 轴左侧只标 10 的倍数
+            continue
+        _, py = xy(0, n)
+        label = str(n)
+        bbox = d.textbbox((0, 0), label, font=small)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        tx = x0 - 8 - tw  # right-aligned, 8px to the left of the y-axis
+        ty = py - th / 2
+        d.text((tx, ty), label, fill=(65, 125, 180), font=small)
+
     # Mouse-like cursor below x-axis
     draw_mouse_cursor(d, cursor)
 
@@ -198,8 +224,8 @@ for frame in range(N_MAX * STAGE_FRAMES):
     d.text((MARGIN, 15), title, fill=(25,25,25), font=font)
     d.text((MARGIN, 38), subtitle, fill=(70,70,70), font=small)
     d.text(
-        (MARGIN, H-30),
-        "RED: x-axis   YELLOW: y-axis   ORANGE: lit   BLUE: Goldbach lines",
+        (MARGIN, H-12),
+        "RED: x-axis   YELLOW: y-axis   ORANGE: lit   GREEN: y=2 lit   BLUE: Goldbach lines",
         fill=(70,70,70), font=small
     )
 
