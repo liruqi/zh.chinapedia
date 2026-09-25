@@ -1,7 +1,17 @@
+import subprocess
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-OUTPUT = Path(__file__).resolve().parent / "goldbachs_conjecture.gif"
+# 用法: python goldbachs_conjecture.py [mp4|gif|both]，默认 mp4
+MODE = sys.argv[1].lower() if len(sys.argv) > 1 else "mp4"
+DO_GIF = MODE in ("gif", "both")
+DO_MP4 = MODE in ("mp4", "both")
+
+OUT_DIR = Path(__file__).resolve().parent
+GIF_PATH = OUT_DIR / "goldbachs_conjecture.gif"
+MP4_PATH = OUT_DIR / "goldbachs_conjecture.mp4"
+TAIL_SECONDS = 2.0  # 结尾静止时长，方便看清最终画面
 
 N_MAX = 100
 FPS = 12
@@ -62,7 +72,81 @@ def draw_mouse_cursor(d, x):
     d.line((cx, top + 5, cx, top + 15), fill=(40,120,216), width=2)
     d.ellipse((cx - 2, top + 7, cx + 2, top + 11), fill=(40,120,216))
 
+def open_mp4(path, w, h, fps):
+    """起一个 ffmpeg 进程，用 rawvideo 管道逐帧喂数据（不生成中间图片文件）。"""
+    import imageio_ffmpeg
+
+    cmd = [
+        imageio_ffmpeg.get_ffmpeg_exe(),
+        "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "rgb24",
+        "-s", f"{w}x{h}",
+        "-r", str(fps),
+        "-i", "-",
+        "-an",
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",      # 兼容性最好，QuickTime/浏览器都能放
+        "-preset", "slow",
+        "-crf", "18",
+        "-movflags", "+faststart",  # 元数据前置，网页边下边播
+        str(path),
+    ]
+    return subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+
+
+SILENT_PATH = OUT_DIR / "_silent.mp4"   # 无声中间文件，混音后删掉
+BGM_EXTS = ("wav", "mp3", "m4a", "aac", "flac", "ogg")
+
+
+def find_bgm():
+    """优先用现成的音频文件；没有就现场合成一段（bgm.py，原创无版权问题）。"""
+    for ext in BGM_EXTS:
+        p = OUT_DIR / f"bgm.{ext}"
+        if p.exists():
+            return p, f"使用现成音源 {p.name}"
+    try:
+        import bgm
+
+        p = OUT_DIR / "bgm.wav"
+        bgm.write_wav(p, bgm.render(TAIL_SECONDS + N_MAX * STAGE_FRAMES / FPS + 2))
+        return p, "未找到现成音源，已用 bgm.py 合成（原创，无版权问题）"
+    except Exception as exc:  # 合成失败就安静出片，不阻断主流程
+        print(f"[bgm] 跳过配乐: {exc}")
+        return None, "无配乐"
+
+
+def mux_audio(video_in, audio_in, out):
+    """把音轨混进 mp4：视频流直接 copy，音频转 AAC。"""
+    import imageio_ffmpeg
+
+    cmd = [
+        imageio_ffmpeg.get_ffmpeg_exe(),
+        "-y",
+        "-i", str(video_in),
+        "-stream_loop", "-1",        # 音乐不够长就循环
+        "-i", str(audio_in),
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-shortest",                 # 以视频长度为准
+        "-movflags", "+faststart",
+        str(out),
+    ]
+    r = subprocess.run(cmd, capture_output=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            "ffmpeg 混音失败:\n" + r.stderr.decode("utf-8", "ignore")[-2000:]
+        )
+
+
 frames = []
+mp4_proc = open_mp4(SILENT_PATH, W, H, FPS) if DO_MP4 else None
 
 for frame in range(N_MAX * STAGE_FRAMES):
     stage = frame // STAGE_FRAMES
@@ -229,15 +313,38 @@ for frame in range(N_MAX * STAGE_FRAMES):
         fill=(70,70,70), font=small
     )
 
-    frames.append(im)
+    if DO_GIF:
+        frames.append(im)
+    if mp4_proc is not None:
+        mp4_proc.stdin.write(im.tobytes())
 
-frames[0].save(
-    OUTPUT,
-    save_all=True,
-    append_images=frames[1:],
-    duration=round(1000/FPS),
-    loop=0,
-    optimize=False
-)
+# 结尾静止几秒，避免最后一帧一闪而过
+if mp4_proc is not None:
+    tail = im.tobytes()
+    for _ in range(int(TAIL_SECONDS * FPS)):
+        mp4_proc.stdin.write(tail)
 
-print(OUTPUT)
+if mp4_proc is not None:
+    mp4_proc.stdin.close()
+    err = mp4_proc.stderr.read().decode("utf-8", "ignore")
+    if mp4_proc.wait() != 0:
+        raise RuntimeError(f"ffmpeg 编码失败:\n{err[-2000:]}")
+
+    bgm, note = find_bgm()
+    if bgm is not None:
+        mux_audio(SILENT_PATH, bgm, MP4_PATH)
+        SILENT_PATH.unlink()
+    else:
+        SILENT_PATH.replace(MP4_PATH)
+    print(MP4_PATH, "|", note)
+
+if DO_GIF:
+    frames[0].save(
+        GIF_PATH,
+        save_all=True,
+        append_images=frames[1:],
+        duration=round(1000/FPS),
+        loop=0,
+        optimize=False
+    )
+    print(GIF_PATH)
