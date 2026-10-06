@@ -1134,6 +1134,20 @@ def convert(wikitext, lang="en", title=None):
     text, maths = extract_math(text)
     ctx["maths"] = maths          # {{math}}/{{mset}} 需要按裸 LaTeX 展开占位符
 
+    # 1b. 列表标记补空格（**必须在展开模板之前、且只在这一步做**）
+    #
+    # 维基里 `*[[X]]`（标记后**直接**跟内容）比 `* [[X]]` 常见得多。第 7 步的分行逻辑
+    # 要求标记后有空白，于是这类行整行掉进「普通段落」分支：`*` 变成字面量，而且连续
+    # 多行会被 CommonMark 并成**一个**段落（实测 Navier–Stokes 的 7 行 See also 渲染
+    # 成 1 个列表项）。这里统一补一个空格。
+    #
+    # 为什么放在这一步：wikitext 里行首的 `*#:;` 一定是列表/缩进标记，没有歧义；而
+    # 一旦过了 `wiki_inline()`（第 6 步），`''斜体''` 已经变成 `*斜体*`，再补空格就会把
+    # 正经段落误判成列表（Goldbach 的 `''Goldbach's Conjecture'' (…) is the title of…`
+    # 正是这种情况）。放在展开模板之前，还能避开模板展开出来的 `**粗体**`。
+    # 数学已被占位符保护，不会误伤公式里的 `*`。
+    text = re.sub(r"^([#*:;]+)(?=[^#*:;\s])", r"\1 ", text, flags=re.M)
+
     # 2. 展开模板
     text = expand_templates(text, ctx)
 
@@ -1238,7 +1252,15 @@ def convert(wikitext, lang="en", title=None):
     # MediaWiki 的 <references/>（「## References」节里的占位）在 Markdown 里没有意义：
     # 脚注定义已由 notes2footnotes.py 补在文末。留着会被 MDX 当成未定义组件 →
     # 运行时 ReferenceError（正是「compile 不报错、只在页面炸」那一类）。
-    body = re.sub(r"</?references\s*/?>", "", body, flags=re.I)
+    # 注意要允许属性：`<references group="lower-alpha" />`（英文维基里 efn/notelist
+    # 那一套的写法）不带属性时匹配不到，会整行留在正文里被 MDX 当组件。
+    body = re.sub(r"</?references\b[^>]*/?>", "", body, flags=re.I)
+    # 被丢掉的模板会在正文里留下一对空括号：维基开头常写
+    # `({{IPAc-en|…}} {{Respell|…}})`，两个模板都在 DROP_TEMPLATES 里，于是剩下 `( )`。
+    # 括号里**必须至少有一个空格**才动手：`()` 是编程条目里的函数调用（`printf()`），
+    # 不能碰；而模板被丢掉后括号里一定留着原来分隔模板的空格。
+    # 也不能写 \s（会匹配换行，把上下两行粘起来），只吃同一行内的空格/制表符。
+    body = re.sub(r"\([ \t]+\)[ \t]*", "", body)
     body = re.sub(r"[ \t]+\n", "\n", body)
     body = re.sub(r"\n{3,}", "\n\n", body)
 
