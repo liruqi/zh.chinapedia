@@ -75,6 +75,23 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
   验 `<figure>` 会得到 figure=0 的假阴性。用 `scratch/_figcheck.mjs`：`@mdx-js/mdx` compile +
   eval，stub jsx 工厂后遍历真实元素树。
 - `r_bisect.mjs`：二分定位 MDX 编译失败的行（COMPILE ERROR 只说 acorn 报错不给行号）。
+- **内嵌 React 交互组件（canvas 动画）光「编译过」不算数，必须真跑一遍**：
+  - **SSR 冒烟** `scratch/_gb_ssr.mjs`：`@mdx-js/mdx` compile（`outputFormat:'program'`）→ 写临时
+    `.mjs` → `import` → `renderToStaticMarkup`。仓库里自带 react 19 + react-dom，不用装东西。
+    能抓到「编译过但渲染炸」（此前 `_mdxrun.mjs` 对 ESM 文档只做编译检查，是空档）。
+  - **视觉/交互**：真浏览器截图。playwright 装在 managed workspace
+    （`C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`），浏览器已下在
+    `C:\Users\liruqi\AppData\Local\ms-playwright\chromium-1246`。
+    **playwright 1.63 期望 chromium-1243**，版本对不上它会去重下 150MB —— 直接
+    `chromium.launch({ executablePath: '…/chromium-1246/chrome-win64/chrome.exe' })` 用现成的即可。
+    **ESM 不认 `NODE_PATH`**，脚本里要按绝对路径引：
+    `import pw from 'file:///C:/Users/liruqi/.workbuddy-ai/binaries/node/workspace/node_modules/playwright/index.js'`。
+  - 做法（`scratch/_gb_page_build.mjs` + `scratch/_gb_shot.mjs`）：从 `.md` 里**抠出真实的
+    canvas 绘制 IIFE 源码**塞进一个独立 HTML（纯 JS，不需要 React、不需要打包器），
+    在浏览器里 `mousemove` 到目标坐标再截图 —— 验的是真代码，不是复刻一份。
+  - 几何类改动优先做**差分测试**（`scratch/_gb_hover_check.mjs`）：重构出来的 `lastEvenFor`
+    与原表达式逐帧比对（800 帧全等），再对「线上取点必命中本线 / 容差边界 / 线段外 /
+    未画出的线 / 初始帧」逐条断言。
 
 ## 跑构建的完整配方
 
