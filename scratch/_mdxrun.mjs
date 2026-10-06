@@ -11,15 +11,25 @@ const FILE = process.argv[2] || 'D:/SRC/Z/zh.chinapedia/docs/math/黎曼猜想.m
 let src = fs.readFileSync(FILE, 'utf8');
 src = src.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
 
+// 文件自带 ESM（内嵌 React 动画组件）时：function-body 会把 import 变成顶层
+// `await import(...)`，new Function 求值不了；真求值也会因为缺 React renderer
+// 报 Invalid hook call。这类文件只做 program 编译检查（与 Docusaurus 同路径）。
+const hasEsm = /^(?:import|export)[\s{]/m.test(src);
+
 let compiled;
 try {
   compiled = String(await compile(src, {
     remarkPlugins: [remarkGfm, remarkMath],
-    outputFormat: 'function-body',
+    outputFormat: hasEsm ? 'program' : 'function-body',
   }));
 } catch (e) {
   console.log('COMPILE ERROR:', e.message);
   process.exit(1);
+}
+
+if (hasEsm) {
+  console.log('PROGRAM COMPILE OK — 含 ESM，跳过运行时求值（无 React renderer）');
+  process.exit(0);
 }
 
 const missing = (name) => { throw new Error('missing component: ' + name); };
