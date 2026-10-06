@@ -157,22 +157,37 @@ for (const f of files) {
   }
 
   // ---- 5. MDX 编译 + 运行时求值（抓裸 {expr}）---------------------------
+  //
+  // 文件里自己写了 ESM（页面内嵌 React 动画组件：`import {useState} from 'react'` +
+  // `export const Foo = …`）时走另一条路：
+  //   * function-body 模式会把 import 编译成**顶层** `await import('react')`，
+  //     而 `new Function(body)` 的 body 不是 async 函数 → 直接抛
+  //     「await is only valid in async functions」。这不是页面的问题：
+  //     Docusaurus 用的是 outputFormat:'program'（真模块），顶层 await 合法。
+  //   * 就算套一层 async IIFE 求值也没意义：组件里的 useState/useEffect 没有
+  //     React renderer，必然报 Invalid hook call —— 又一个假阳性。
+  // 所以这类文件只做 program 模式的编译检查（与 Docusaurus 同一条路径）。
+  const hasEsm = /^(?:import|export)[\s{]/m.test(body);
   let compiled;
   try {
     compiled = String(await compile(body, {
       remarkPlugins: [remarkGfm, remarkMath],
-      outputFormat: 'function-body',
+      outputFormat: hasEsm ? 'program' : 'function-body',
+      // 不要传 jsx:true：那会让产物变成 JSX 语法，`new Function(body)` 解析不了
+      // （Unexpected token '<'）。function-body 模式本来就产出 `_jsx(...)` 调用。
     }));
   } catch (e) {
     note(f, 'MDX 编译失败', e.message.split('\n')[0]);
     continue;
   }
-  try {
-    const h = () => null;
-    const Content = new Function(compiled)({ Fragment: 'Fragment', jsx: h, jsxs: h }).default;
-    Content({});
-  } catch (e) {
-    note(f, 'MDX 运行时报错', e.message.split('\n')[0]);
+  if (!hasEsm) {
+    try {
+      const h = () => null;
+      const Content = new Function(compiled)({ Fragment: 'Fragment', jsx: h, jsxs: h }).default;
+      Content({});
+    } catch (e) {
+      note(f, 'MDX 运行时报错', e.message.split('\n')[0]);
+    }
   }
 
   // ---- 6. KaTeX 在真实渲染管线里报红 ------------------------------------
