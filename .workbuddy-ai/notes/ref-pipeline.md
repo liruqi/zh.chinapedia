@@ -497,3 +497,40 @@ python scripts/wikiterm.py --lang th --scan <dir>         # 泰语（en.wikipedi
 - 缓存键**按小写去重**（维基标题大小写等价）；变体里留"句子式大小写"那个。
 - 改完用中英混排正则扫残留：`[\u4e00-\u9fff]\s?([A-Za-z][A-Za-z\-']{2,})\s?[\u4e00-\u9fff]`
 - `wikiterm.py` 里「查不到」的占位文案要跟着 `--lang` 走（别硬编码「（无中文条目）」）。
+
+## 扫描版 PDF 论文 → 站内条目（2026-10-07）
+
+用户给一份论文 PDF 要求「全文翻译」时（例：陈景润 1973「1+2」，
+`docs/math/doi/10.1142/9789812776600_0021.md`），**先判断文本层能不能用**。
+
+1. **文本层基本不能用**：老扫描件 / ABBYY 的公式必然烂 —— 实测 `4>(y) = _i_ r- £*« .`
+   对应 $\Phi(y)=\frac{1}{2\pi i}\int_{2-i\infty}^{2+i\infty}\frac{y^\omega d\omega}{\omega(1+\omega/(\log x)^{1.1})^{[\log x]+1}}$；
+   散文也带错字（`Eeceived`、`a;`、`4>`）。**别拿它当译文依据**。
+2. **抽页面图、肉眼看图**（关键一步）：
+   ```python
+   import pypdf
+   r = pypdf.PdfReader(pdf)
+   for i, p in enumerate(r.pages):
+       p.images[0].image.convert('L').save('scratch/x/p%02d.png' % (i+1))
+   ```
+   老期刊扫描件常常**每页正好一张图**、300dpi 二值图 → 用 Read 工具看图就能逐条读准公式；
+   小上下标再用 PIL 裁剪 + 2~3× 放大单独看。
+3. **别用像素坐标猜位置**：渲染尺寸和实际像素不成固定比例，反复裁偏会白费好几轮。
+   按「先整页、再对可疑行放大」两步走。
+4. **用数学自洽性交叉验证读数**：本文靠 `2.6408 − 3.9404/2 = 0.67` 与
+   `8 × 0.3301 = 2.6408` 确认了引理 8/9 的常数；`y ≥ e^{2(\log x)^{-0.1}}` 由
+   「积分下限必须 ≥ 2[log x]」反推得到。
+5. **参考文献用 `## 参考文献` + 编号列表，正文引用写 `<sup>[n]</sup>`**，别用 GFM 脚注：
+   remark-gfm 会把**所有脚注定义**抽到文末**自动生成的 `Footnotes` 节**，
+   于是 `## 参考文献` 只剩一个空标题、条目跑到英文 `Footnotes` 底下。
+   （本站 `孪生素数.md` 是「真列表 + 脚注」两套并存的形态，那是 wiki 条目，
+   论文页的参考文献**本身就是引用**，再挂脚注就重复了。）`<sup>` 是合法 HTML 元素，
+   MDX 认、`prebuild_check` / `_mdxrun` 都过。
+6. **方程编号用 `\tag{n}`**：KaTeX 只在 display 模式认（`$$…$$` 就是 display），
+   渲染成 `.tag`，实测 `position:absolute; right:0`、落在容器右边界，可用。
+   **不要**在 `$$…$$` 里写 `$`（remark-math 靠数 `$` 切公式，会把公式切坏）。
+7. **文件路径带点没问题**：`docs/math/doi/10.1142/9789812776600_0021.md` 实测
+   route `/wiki/math/doi/10.1142/9789812776600_0021` 正常 200 且能渲染
+   （doc id 里的点不触发扩展名解析）。新目录不需要 `_category_.json` 也能出侧栏。
+8. 收尾照旧：`prebuild_check` → `_mdxrun` → 真浏览器（playwright）看 h1/h2、
+   `.katex` 与 `.katex-error` 计数、console 有无报错。

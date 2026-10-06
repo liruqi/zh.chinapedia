@@ -10,6 +10,7 @@
 | `2026-09-21.md` | 图片搬 R2（`wikiimg2r2.py`、SigV4、thumburl/GIF 反例）、`img2figure.py` 图注可见化、KaTeX 缺 MediaWiki 宏、中文条目丢图、整站构建失败（标题裸尖括号）、blog tags 警告 |
 | `2026-09-22.md` | `prebuild_check.mjs`、`wikiterm.py` 术语译名、`md2zh.py --terms` 注入、整站构建 OOM 与 `future.faster`（Rspack）、图片显示宽度 `w250`、相邻脚注补空格、MEMORY.md 瘦身、日志重复的流程教训 |
 | `2026-09-23.md` | 泰语 orphan 分支完成（3 篇）、词条外链改走站内链接（`wikilink_localize.py` + slugify 差分测试）、修掉构建脚本在 Windows 全坏（`build.mjs`）、新增 Goldbach 三语言条目 |
+| `2026-10-06.md` | Navier–Stokes 三语言（英/中/泰，仅中文用中文文件名）、`wikitext2md.py` 三类残留 + `md2zh.py` 四个守卫、泰语稿 `link_texts_left_source()`、哥德巴赫可视化悬停高亮蓝线、本地起 dev server 与线上没生效的排查 |
 
 **查历史时**：先看 `notes/ref-pipeline.md` / `ref-site.md`（沉淀后的结论），
 需要过程细节再回这里按日期翻。
