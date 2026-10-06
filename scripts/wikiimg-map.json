@@ -1,4 +1,9 @@
 {
+  "docs/math|1000|ConvectiveAcceleration vectorized.svg": {
+    "bytes": 38320,
+    "key": "docs/math/ConvectiveAcceleration_vectorized.svg.png",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/ConvectiveAcceleration_vectorized.svg.png"
+  },
   "docs/math|1000|Cplot zeta.svg": {
     "bytes": 544551,
     "key": "docs/math/Cplot_zeta.svg.png",
@@ -13,6 +18,16 @@
     "bytes": 92705,
     "key": "docs/math/Goldbach-1000000.png",
     "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Goldbach-1000000.png"
+  },
+  "docs/math|1000|Hopfkeyrings.jpg": {
+    "bytes": 328866,
+    "key": "docs/math/Hopfkeyrings.jpg",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/Hopfkeyrings.jpg"
+  },
+  "docs/math|1000|NSConvection vectorial.svg": {
+    "bytes": 91923,
+    "key": "docs/math/NSConvection_vectorial.svg.png",
+    "url": "https://pub-275e30003c354ac0862cc9839e0f952a.r2.dev/docs/math/NSConvection_vectorial.svg.png"
   },
   "docs/math|1000|ParametricZeta.svg": {
     "bytes": 145542,
