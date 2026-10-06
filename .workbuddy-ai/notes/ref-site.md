@@ -154,6 +154,37 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
 （所有 URL 返回同一个 2110 字节 SPA 外壳、引用未加哈希的 `/main.js`、`x-powered-by: Express`）
 → 服务器上 `npm run build` 对访客没有影响。修复步骤见仓库根目录 **`DEPLOY.md`**。
 
+### 本地起服务（2026-10-06 实测）
+
+**dev server（改完热更新，看正文首选）**：
+
+```bash
+export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-3:$PATH"
+export SKIP_WOW=1                       # 必须 export，别写成 npm script 里的 POSIX 前缀
+export NODE_OPTIONS=--max-old-space-size=8192
+./node_modules/.bin/docusaurus start --port 3000 --host 127.0.0.1 --no-open
+# → http://127.0.0.1:3000/wiki/math/哥德巴赫猜想   （baseUrl=/，routeBasePath=wiki）
+```
+
+- `docusaurus.config.js:20` 读 `SKIP_WOW`，第 104 行用它 `exclude: ['wow/**', …]`，
+  所以**加了这个变量 `start` 也能瘦身**（否则 9711 篇 wow 一起进 webpack，起得极慢、吃内存）。
+  约 2 分钟起来。
+- **`npm start` 不带 `SKIP_WOW`**，且 host 写死 `0.0.0.0`；本地调试建议直接调 CLI 并绑 `127.0.0.1`。
+
+**静态产物**（更接近正式站）：`npm run build:slim` → `build-slim/`，然后
+`python -m http.server 8080 --bind 127.0.0.1 --directory build-slim`。
+`trailingSlash: false`，**URL 必须带 `.html`**（`/wiki/math/哥德巴赫猜想.html`）。
+
+**踩坑：`curl http://127.0.0.1:…` 会走沙箱代理，返回 502**（响应只有 94 字节，
+`curl -I https://…` 能看到 `HTTP/1.1 200 Connection Established` 就是代理）。
+本机请求一律加 `--noproxy '*'`。playwright 不受影响。
+
+**怎么验「页面上的新代码生效了没」**：dev server 把每篇 doc 编成**独立 chunk**，
+`/main.js` 里**没有** doc 的代码 —— 别去 `grep main.js` 找标记，会得到假的 0。
+要在真页面上验：playwright 打开页面 → 点「暂停」→ 读 canvas 像素。
+**整幅像素差会被动画帧漂移干扰**，改用**特征色计数**（如高亮色 `#0d47a1`）最稳：
+不悬停 0、悬停 n=42 得 1140 px、n=100 得 2967 px、移开回 0。脚本 `scratch/_gb_e2e.mjs`。
+
 ## GitHub 渲染公式的坑（.md 在 GitHub 上直接看）
 
 - **行内公式起始 `$` 前必须是空白或行首**。紧跟中文标点（`，。、：（）`）GitHub 不渲染
