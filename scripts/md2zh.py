@@ -461,6 +461,81 @@ def strip_source_echo(line, src):
 
 _MD_LINK_RE = re.compile(r"(?<!!)\[([^\[\]]+)\]\(([^()\s]+)\)")
 
+# ---------------------------------------------------------------- 结构保真
+#
+# 下面这几个是「确定性修补 / 守卫」，跟 `repair_bracket_urls` 一个路子：模型输出的
+# 结构（列表标记、链接、有没有真的翻译）不由模型说了算，按原文校验、能补的补、
+# 补不了的退回重试。理由是实测过的一批哑巴坑 —— 它们全都**能过**
+# `prebuild_check`，但页面确实是坏的。
+_BLOCK_MARKER_RE = re.compile(r"^((?:[*+-]|\d+[.)]|>)\s+)")
+_URL_ANY_RE = re.compile(r"https?://[^\s()<>\[\]|]+")
+
+
+def restore_block_marker(line, src):
+    """块级标记（`*` / `-` / `1.` / `>`）以**原文**为准补回来。
+
+    模型译长列表时经常整条丢掉标记：实测 Navier–Stokes 的 `## General references`
+    22 条里丢了 13 条，译文里就成了「上一项的续行」，整块粘成一段。而
+    `prebuild_check` 只查公式和 MDX，这种结构塌陷它一声不吭。
+
+    标记属于结构不属于内容，不该由模型决定 —— 和标题层级（`main()` 里
+    `^(#{1,6})\\s` 那段）同样的处理。`**粗体**` 不会被误判：要求标记后跟空白。
+    """
+    m = _BLOCK_MARKER_RE.match(src)
+    if not m or _BLOCK_MARKER_RE.match(line) or not line.strip():
+        return line
+    return m.group(1) + line.lstrip()
+
+
+def repair_dropped_brackets(line):
+    """`[文字](url)` 被写成 `**文字**(url)` / `**文字**（url）` → 补回方括号。
+
+    实测（Navier–Stokes 中文稿 L298 / L609，共 13 处）：英文
+    `the **fundamental equation of [hydraulics](url)**` 被译成
+    `它是**流体力学**(https://en.wikipedia.org/wiki/hydraulics)的基本方程` ——
+    方括号没了，页面上直接显示一长串网址。
+    """
+    return re.sub(r"\*\*([^*\n]+)\*\*\s*[（(](https?://[^)）\s]+)[)）]",
+                  r"[\1](\2)", line)
+
+
+def lines_missing_urls(src_lines, out_lines):
+    """逐行比：原文这一行的 URL 有没有原样出现在译文对应行里。
+
+    返回 `[(行号, 缺失的 URL)]`。链接被整条删掉、或 URL 被挂到别的链接文字上，
+    都会在这里露出来（Navier–Stokes 中文稿丢了 14 条链接，另有 1 条 URL 串位）。
+    """
+    bad = []
+    for k, (a, b) in enumerate(zip(src_lines, out_lines), 1):
+        for u in _URL_ANY_RE.findall(a):
+            if u not in b:
+                bad.append((k, u))
+    return bad
+
+
+def prose_only(s):
+    """剥掉链接（**连显示文字一起**）、公式、脚注标记、URL 后剩下的散文。"""
+    s = _MD_LINK_RE.sub(" ", s)
+    s = re.sub(r"\$[^$\n]*\$", " ", s)
+    s = re.sub(r"\[\^[^\]]*\]", " ", s)
+    s = _URL_ANY_RE.sub(" ", s)
+    return re.sub(r"\s+", "", s).lower()
+
+
+def looks_untranslated(src, out):
+    """模型把整段原文照抄回来（一个字没译）。
+
+    链接文字不能算「译过了」的证据：`enforce_terms_in_links` 会用术语表把
+    `[pure mathematics](url)` 的显示文字换成「纯粹数学」，于是整段照抄的回复
+    看上去也带中文 —— Navier–Stokes 中文稿导语第 5 段就是这么漏过去的。
+    所以比对前把链接整体抠掉。
+    """
+    a = prose_only(src)
+    if len(a) < 20:                    # 本来就没多少散文，没法判断
+        return False
+    return a == prose_only(out)
+
+
 
 def term_index(terms):
     """小写英文名 → 目标语言译名。"""
@@ -608,6 +683,7 @@ def translate_chunk(cfg, text, tries=3, terms=None, L=None):
     # 所以超时随文本长度走，短句给 240s 就够。
     tmo = 240 if len(text) <= 400 else 900
     last = None
+    echo = False
     for i in range(tries):
         try:
             reply = W.llm_chat(
@@ -616,14 +692,23 @@ def translate_chunk(cfg, text, tries=3, terms=None, L=None):
                  {"role": "user", "content": text_prompt(safe, L)}],
                 temperature=0.2, timeout=tmo)
             out = restore(clean_reply(reply), urls)
-            # 行数必须对得上，且每行的 $ 要成对（防截断回复）
-            if out.count("\n") + 1 == n and dollars_balanced(lines, out.split("\n")):
+            # 行数必须对得上、每行的 $ 要成对（防截断回复）、原文的链接一条都不能少、
+            # 且不能把原文整段照抄回来。四条全过才收。
+            if (out.count("\n") + 1 == n
+                    and dollars_balanced(lines, out.split("\n"))
+                    and not lines_missing_urls(lines, out.split("\n"))
+                    and not looks_untranslated(text, out)):
                 return out
+            if out.count("\n") + 1 == n and looks_untranslated(text, out):
+                echo = True
             last = out
             if n <= 2 and i >= 1:                        # 短段落重试一次没用，直接逐行
                 break
         except Exception as exc:                         # noqa: BLE001
             last = exc
+    if echo:
+        print("  ⚠ 疑似整段原样回抄（%d 行，首行：%s），已逐行重译"
+              % (n, lines[0][:60]))
     # 兜底：逐行翻译，宁可慢也要 1:1
     return "\n".join(translate_line(cfg, ln, terms, L) for ln in lines)
 
@@ -753,6 +838,8 @@ def main(argv=None):
                 line = ""                            # 模型自己编的脚注定义，丢掉
             line = fix_footnotes(line, src)
             line = strip_source_echo(line, src)
+            line = restore_block_marker(line, src)
+            line = repair_dropped_brackets(line)
             line = repair_bracket_urls(line, L["script"])
             line = enforce_terms_in_links(line, t_index)
             line = fix_spacing(line)

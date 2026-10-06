@@ -57,6 +57,18 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
   `mdxtest.mjs`、`mathnodes.mjs`（remark-math AST：inlineMath/math 计数，查一行式 `$$`）。
 - **必跑第四件套 `r_mdxrun.mjs`**：真正 eval 编译产物（stub jsx，不用装 react），抓
   `ReferenceError`。前三件套全绿但这个炸的情况真实发生过。
+  - **文档自带 ESM（内嵌 React 动画组件）时不能走 function-body**（2026-10-06 修）：
+    `docs/math/哥德巴赫猜想.md` 里有 `import {useState} from 'react'` + `export const Foo = …`，
+    function-body 模式会把 import 编译成**顶层** `await import('react')`，而
+    `new Function(body)` 的 body 不是 async 函数 → 报
+    「await is only valid in async functions」，**假阳性**（Docusaurus 用
+    `outputFormat:'program'` 真模块，顶层 await 合法；`program` 模式下该文件编译通过）。
+    就算套一层 async IIFE 求值也没意义：组件里的 useState/useEffect 没有 React renderer，
+    必然报 Invalid hook call，又一个假阳性。
+    → `prebuild_check.mjs` 与 `scratch/_mdxrun.mjs` 现在先探
+    `/^(?:import|export)[\s{]/m`，命中就只做 `outputFormat:'program'` 的编译检查。
+  - **别给 function-body 传 `jsx: true`**：产物会变成 JSX 语法，`new Function` 解析不了，
+    全站文档一起报 `Unexpected token '<'`。function-body 本来就产出 `_jsx(...)` 调用。
 - **更快的一环 `scratch/_render.mjs`**（项目根跑）：remark-parse → gfm → math → rehype → katex，
   遍历 hast 统计 katex/脚注/table/残留 `[^n]`。**项目没装 rehype-stringify**，不要 stringify。
 - **验证 figure 必须走真 MDX 管线**：`_render.mjs` 用纯 remark，**裸 HTML 会被丢掉**，

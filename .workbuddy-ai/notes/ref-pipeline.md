@@ -12,6 +12,7 @@
 | `md2footnotes.py` | 批量把外链改 GFM 脚注 |
 | `notes2footnotes.py` | `［n］` 纯文本 → 真脚注 |
 | `fix_footnote_spacing.py` | 相邻脚注标记间距（见下） |
+| `fix_list_markers.py` | 给「行首列表标记没空格」的 `*X` 行补空格（**修历史产物**用，幂等，`--check`/`--dry-run`）。转换器本身已修好，见下 |
 | `wikiimg2r2.py` / `img2figure.py` | 搬图 / figure 化（见 `ref-site.md`） |
 | `wikiterm.py` | 专有名词译名查询（见下） |
 | `wikilink_localize.py` | 指向 `en.wikipedia` 的词条外链改走站内相对链接（见下） |
@@ -34,7 +35,9 @@
 4. **figure 化**：`img2figure.py scratch/<x>_en.md`
    —— **不要**带 `--from-wikitext`：那个模式只给**已有** `<figure>` 回填 maxWidth，
    不新建 figure，会报「(无改动)」让人以为图没问题。
-5. **收尾**：删空的 `## References`、把脚注定义的续行并回一行（见上一节）。
+5. **收尾**：删空的 `## References` / `## Citations`、把脚注定义的续行并回一行（见上一节）。
+   顺手 `python3 scripts/fix_list_markers.py scratch/<x>_en.md --check` 确认转换器没漏
+   （2026-10-06 之后的新转换应该是 0 处）。
 6. **英文稿落地**：en 仓 `main`，文件名去掉撇号、下划线分词
    （`Goldbach's conjecture` → `goldbachs_conjecture.md`）。
 7. **译中文**：
@@ -47,9 +50,15 @@
    对泰语标题，锚点算不出来）；zh 仓用默认 `docs` 与默认别名表。
 10. **校验**（顺序由快到慢）：`check_translation.py` → `prebuild_check.mjs` →
     `test_fix_footnotes.py` → `_mdxrun.mjs` → `_figcheck.mjs` → `_macroscan.mjs`。
+    另外**必须**按行比一遍原文与译文（这些 `prebuild_check` 一条都查不出来）：
+    列表标记数（`^\* `）、逐行链接数、逐行 URL 包含、逐行丢失的行内公式、
+    汉字之间的空格连字符。见「翻译侧修掉的四类残留」。
 11. **扫人名一致性**——**别省**：同一实体全篇只能有一种中文/泰文写法。
     本文实测：`Goldbach` 在中文稿里同时是「哥德巴赫 / 高尔达赫 / 高斯」，
     泰语稿里同时是 `ก็อลท์บัค / โกลด์แบค`。术语表被 API 封住时必然出现。
+    同一遍顺手查**未翻译的标题**（`^#{2,4} [A-Za-z][A-Za-z ]+$`）：本文中文稿漏了
+    `## Properties` / `## General references`，`哥德巴赫猜想.md` 漏了 `## Further reading`
+    （后者已改成 `## 延伸阅读`，与 `孪生素数.md` 一致）。
 12. **提交**：zh 仓按「工具 / 内容」分 1~2 个 commit；en 仓 `main` 与 `th` 各一个，
     都推。收尾看 `git diff --stat main..th` 的**增删行数对称**（逐行对应，
     本文是 804/804）。
@@ -94,9 +103,11 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
 
 机械转换出来的稿子有两类残留，`prebuild_check` 抓不到（不违反 MDX 硬约束，只是难看）：
 
-1. **空的 `## References`**：wikitext 的 `==References==` 节里往往只有 `{{Reflist}}`
-   （Notes 节同理，只有 `{{Notelist}}`），而 `<ref>` / `{{efn}}` 已被转成脚注定义、
-   统一挂在 `## Notes` 下 → 这个标题下面必然是空的。**删掉标题**。
+1. **空的 `## References` / `## Citations`**：wikitext 的 `==References==` 节里往往只有
+   `{{Reflist}}`（Notes 节同理，只有 `{{Notelist}}`），而 `<ref>` / `{{efn}}` 已被转成
+   脚注定义、统一挂在 `## Notes` 下 → 这个标题下面必然是空的。**删掉标题**。
+   英文维基的版式通常是 `==Notes==` + `==Citations==`（`{{Reflist}}`）+ `==General references==`，
+   空的那个是 `## Citations`。
 2. **脚注定义的续行没有缩进**：`<ref>` 内容里带换行时，第二行会原样落在 `[^n]:`
    定义行的下一行且不缩进 → GFM 认为定义到此结束，多出一段游离正文。
    仓库约定是**一条定义一行**（三篇基线稿的缩进续行数都是 0）→ 并回上一行，
@@ -104,6 +115,65 @@ CLI 支持 `--dry-run` / `--check`（退出码 1，给 CI）。判据：
 
 另有一个**已知且一致**的残留：`==External links==` 里 `*{{Commons category-inline}}`
 会变成一行孤立的 `*`（三篇基线稿都有）→ 保持原样，别单篇"修好"。
+
+### 2026-10-06：转换器修掉的三类残留（Navier–Stokes 时发现）
+
+**这三类已在 `wikitext2md.py` 里修好，新转换不会再有**；但**历史产物**（en 仓 4 篇、
+zh 仓 2 篇）已经带着它们上线过，用 `scripts/fix_list_markers.py <目录>` 修（幂等，
+`--check` 只报不改）。修历史产物时**必须逐篇确认**，见下面第 1 条。
+
+1. **行首列表标记没空格**（`*[[X]]`）—— 最严重的一类。
+   维基里 `*[[X]]`（标记后直接跟内容）比 `* [[X]]` 常见得多，而第 7 步的分行逻辑要求
+   标记后有空白 → 整行掉进「普通段落」分支：`*` 变成字面量，**且连续多行被 CommonMark
+   并成一个段落**。实测 `riemann_hypothesis.md` 的 `## References` 有 125 个 bullet，
+   修之前只解析出 117 个列表项；Navier–Stokes 的 7 行 See also 渲染成 1 个列表项。
+   转换器的修法是把补空格放在**展开模板之前**（那时行首 `*#:;` 一定就是列表标记，
+   没有歧义）；一旦过了 `wiki_inline()`，`''斜体''` 已变成 `*斜体*`，再补空格就会把
+   正经段落误判成列表（Goldbach 的 `''Goldbach's Conjecture'' (…) is the title of…`）。
+   → 给历史产物打补丁时同样有这个问题：`*X` 到底是「漏了空格的列表项」还是「行首斜体」，
+   转换后的文本里长得一模一样，**只能看上下文**——列表项一定与前后某个 `*` 行相邻，
+   行首斜体是独立段落。`fix_list_markers.py` 用的就是这个判据。
+2. **`<references group="lower-alpha" />` 清不掉**：原正则 `</?references\s*/?>` 不允许属性，
+   整行会留在正文里被 MDX 当未定义组件（compile 不报错、运行时炸那一类）。
+   已改成 `</?references\b[^>]*/?>`。
+3. **被丢掉的模板留下一对空括号**：维基开头常写
+   `({{IPAc-en|…}} {{Respell|…}})`，两个模板都在 `DROP_TEMPLATES` 里，于是剩下 `( )`。
+   只删**括号内至少有一个空格**的——`()` 是编程条目里的函数调用（`printf()`），不能碰。
+
+> 教训：这三类都是「`compile()` 能过、`prebuild_check` 也报通过」的哑巴坑。
+> 光跑校验套件看不出来，得**用 remark 真的解析一遍**看节点类型（`scratch/_bulletreal.mjs`：
+> 对比「列表项数」和「bullet 行数」，相等才算对）。
+
+### 2026-10-06：翻译侧（`md2zh.py`）修掉的四类残留（Navier–Stokes 中文稿时发现）
+
+上一条修的是**转换器**（wikitext → 英文 md）。这一条修的是**模型输出**：同一篇文章
+译成中文后，又冒出四类同性质的哑巴坑 —— `prebuild_check` 全部报通过，页面却是坏的。
+`md2zh.py` 里现在有对应的**确定性修补 / 守卫**（跟 `repair_bracket_urls` 一个路子：
+结构不由模型说了算，按原文校验、能补的补、补不了的退回重试）。
+
+1. **列表标记 `*` 被整条吞掉**。模型译长列表时会把 `*` 丢掉，译文里那一行就成了
+   「上一项的续行」，整块粘成一段。实测 `## General references` 22 条里丢了 13 条
+   （另有 1 处是公式开头的 bullet，连公式一起丢了）。→ `restore_block_marker()`：
+   原文行首是 `*` / `-` / `1.` / `>` 而译文没有时按原文补回（和标题层级一样的处理）。
+   `**粗体**` 不会误判——要求标记后跟空白。
+2. **链接被整条删掉、或 URL 串到别的链接文字上**。实测丢了 14 条链接，另有 1 条
+   `[质量守恒定律]` 挂到了 `Newtonian_fluid`。→ `lines_missing_urls()`：逐行比「原文这一行的
+   URL 有没有原样出现在译文对应行里」，缺了就重试（`tries=3`），最后兜底逐行重译。
+3. **`[文字](url)` 写成 `**文字**(url)` / `**文字**（url）`**（方括号丢了）。实测 13 处，
+   页面上直接显示一长串网址。→ `repair_dropped_brackets()` 补回方括号。
+4. **整段原文照抄**（一个字没译）。实测导语第 5 段、L377、L617。这类**最难发现**：
+   `check_translation.py` 原来的判据是「这行有没有目标语言文字」，而
+   `enforce_terms_in_links` 会用术语表把 `[pure mathematics](url)` 的**显示文字**换成
+   「纯粹数学」—— 于是整段照抄的回复看上去也带中文，判据直接放过去了。
+   → `looks_untranslated()`：比对前把链接**连显示文字一起**抠掉，再比散文部分。
+
+`check_translation.py` 同步改了两处：逐行 `$` 奇偶比较**忽略货币写法** `$1 million`
+（remark-math 不会把它当公式，但会让奇偶对不上）；新增「整行与原文相同（没翻译）」判据
+（用同一个 `prose_only()`）。回归测试：拿英文稿跟自己对，报出 201 行 echo。
+
+> 教训同上一条：这四类**全部**能过 `prebuild_check`。译文质量得用
+> 「按行比对原文」的脚本查（链接数 / URL 包含 / 列表标记 / 散文 echo），
+> 光看结构校验和编译通过会漏掉一整段英文。
 
 ## 词条外链改走站内链接（`scripts/wikilink_localize.py`）
 

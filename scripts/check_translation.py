@@ -49,6 +49,37 @@ COUNT_RESIDUE = [
 # 这些行就算没有目标语言文字也算正常（纯符号 / 数字 / 单位 / 缩写）
 IGNORE_LINE = re.compile(r"^[\s\W\d]*$")
 
+# 货币写法 `$1 million` 不是行内公式。remark-math 要求 `$` 后紧跟非空白、闭合 `$`
+# 前非空白；`$1 million` 后面没有配对的 `$`，渲染出来就是字面量。逐行比 `$` 奇偶
+# 时会误报 —— Navier–Stokes 英文原稿第 11 行有一处 `$1 million`，中文译成
+# 「100 万美元」后两边 `$` 数就配不上了。
+CURRENCY_DOLLAR = re.compile(r"(?<=[\s(\[])\$(?=\d)")
+
+# 链接整体（含显示文字）／行内公式／脚注标记
+_MD_LINK = re.compile(r"\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)")
+_INLINE_MATH = re.compile(r"\$[^$\n]*\$")
+_FOOT_REF_ANY = re.compile(r"\[\^[^\]]*\]")
+
+
+def math_dollar_count(s: str) -> int:
+    """只数「可能是行内公式」的 `$`（货币 `$1` 不算）。"""
+    return s.count("$") - len(CURRENCY_DOLLAR.findall(s))
+
+
+def prose_only(s: str) -> str:
+    """剥掉链接（**连显示文字一起**）、公式、脚注标记后剩下的散文。
+
+    链接文字不能当作「这行译过了」的证据：`enforce_terms_in_links` 会用术语表把
+    `[pure mathematics](url)` 的显示文字换成「纯粹数学」，于是**整段照抄原文**的
+    回复看上去也带了中文 —— Navier–Stokes 中文稿导语第 5 段就是这么漏过去的
+    （第 11 行整段英文，只有三个链接文字是中文）。
+    """
+    s = _MD_LINK.sub(" ", s)
+    s = _INLINE_MATH.sub(" ", s)
+    s = _FOOT_REF_ANY.sub(" ", s)
+    s = re.sub(r"https?://\S+", " ", s)
+    return re.sub(r"\s+", "", s).lower()
+
 
 def count(pat, lines):
     return sum(1 for ln in lines if pat.search(ln))
@@ -81,7 +112,7 @@ def compare(src_path, out_path, lang="th"):
     # `[ฟังก์ชัน Z]` 这种，记一笔即可，不算错。
     odd = []
     for i, (a, b) in enumerate(zip(en, th), 1):
-        if a.count("$") % 2 != b.count("$") % 2:
+        if math_dollar_count(a) % 2 != math_dollar_count(b) % 2:
             odd.append("第 %d 行 $ 不配对：原稿 %d 个 / 译稿 %d 个 → %s"
                        % (i, a.count("$"), b.count("$"), b.strip()[:60]))
     problems.extend(odd)
@@ -130,6 +161,20 @@ def compare(src_path, out_path, lang="th"):
         notes.append("应译但无目标语言文字的行 %d 行（原样留下）：" % len(missing))
         for m in missing[:12]:
             notes.append("    " + m)
+
+    # 整段照抄原文（一个字没译）。上面那条判据漏得掉：只要行里有一个链接文字
+    # 被术语表换成了中文，它就认为「译过了」。这里换成剥掉链接后的散文比对。
+    echoes = []
+    for i, (a, b) in enumerate(zip(en, th), 1):
+        if a not in text_lines:
+            continue
+        pa, pb = prose_only(a), prose_only(b)
+        if len(pa) >= 20 and pa == pb:
+            echoes.append((i, b.strip()[:70]))
+    if echoes:
+        problems.append("整行与原文相同（没翻译）%d 行：" % len(echoes))
+        for i, t in echoes[:12]:
+            problems.append("    第 %d 行 %s" % (i, t))
 
     # 译文里成串拉丁字母（允许：人名 / 期刊 / 缩写 / 术语留英文）
     latin = []
