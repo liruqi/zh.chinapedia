@@ -33,11 +33,10 @@ orphan 分支 `th` = 泰语稿，两版文件名一致（便于 `git diff main..
    对访客无效。修复见 `DEPLOY.md`。
 9. **提交约定**：改动认为已完成就直接提交。凭证只放 `scripts/r2.local.json`（gitignore）。
 10. **git commit message 别用 `-m` 带反引号**（会被 shell 吃掉），用 `git commit -F <file>`。
-11. **写日志要幂等，且绝不和 commit 写进同一条命令**。沙箱升级重试会重跑整条命令：
-    `>>` 会追加两次、`git commit` 会提交两次。
-    → 改文件用 Edit/Write（不走 shell）；提交单独一条命令；
-    必须 shell 追加时先 `grep -q '<块标题>' file || cat >> file`。
-    → 判断提交是否成功**看 `git log`，不看退出码**（重试那次会报 `nothing to commit`）。
+11. **写日志要幂等，且绝不和 commit 写进同一条命令**：沙箱升级重试会重跑整条命令
+    （`>>` 追加两次、`git commit` 提交两次）。→ 改文件用 Edit/Write；提交单独一条命令；
+    必须 shell 追加时先 `grep -q '<块标题>' file || cat >> file`。判断提交是否成功
+    **看 `git log`，不看退出码**（重试那次会报 `nothing to commit`）。
 12. **`memory/` 目录每次会话整体注入，预算约 10 KB**：只放 **MEMORY.md + 当天日志**；
     细节放 `.workbuddy-ai/notes/`；过期日志 `mv` 到 `notes/log-archive/`（搬家不删）。
     超预算会**静默截断**（踩过两次）。写完顺手 `wc -c memory/*.md` 看一眼。
@@ -47,6 +46,15 @@ orphan 分支 `th` = 泰语稿，两版文件名一致（便于 `git diff main..
 14. **要跟第三方库逐字一致时（如锚点 slug）别近似——读源码 + 差分测试。**
     踩过：用 `[^\w\s-]` 近似 github-slugger，**泰语元音/声调符号是 Mn 组合字符被当标点删掉**，
     锚点静默失效。真规则：删 P/S/C 类但保留 `-` `_`、不 trim、不合并空白、只有空格换 `-`。
+15. **译文里的「结构塌陷」是哑巴坑，`prebuild_check` 全报通过**：模型会吞掉行首 `*`、删掉
+    整条链接、把 `[文字](url)` 写成 `**文字**(url)`（页面直接显示网址）、整段照抄原文。
+    `md2zh.py` 已有确定性守卫（`restore_block_marker` / `lines_missing_urls` /
+    `repair_dropped_brackets` / `looks_untranslated` / `link_texts_left_source`），但收尾
+    **必须**再按行比一遍原文与译文（判据见 `ref-pipeline.md`）；未翻译的标题单独扫。
+    泰语稿还多一类中文稿没有的：**链接显示文字整片没译**（NS 泰语稿 312 条里 164 条，
+    中文稿同一篇只有 23 条）—— 补译别猜，用 `wikiterm.py --lang th --scan <en 稿>`。
+16. **泰语组合字符在正则里占多个码位**：`ร์` = U+0E23 + U+0E4C，`นาเวียร์?` 只让 `์` 可选，
+    整簇要写 `(?:ร์)?`；改完拿真实字符串 `re.search` 验（`str.find` 命中不算数）。
 
 ## 环境
 

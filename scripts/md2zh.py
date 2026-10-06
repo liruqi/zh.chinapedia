@@ -70,20 +70,28 @@ TH_SYSTEM = """你是资深数学/百科译者，把英文维基百科条目译�
 1. 逐句翻译，不要省略、不要概括、不要自己补充内容。
 2. 保留 Markdown 结构：标题的 # 层级、列表标记、引用块 >、粗体 **、表格的 | 分隔。
 3. 公式原样不动：$…$ 和 $$…$$ 里的 LaTeX 一个字符都不要改，也不要增删 $。
-4. 保留 [文字](URL) 链接——URL 不译，链接文字按规则 6、7 处理
-   （普通名词、概念一律译成泰语，只有人名这类专有名词才留拉丁字母）。
+4. 保留 [文字](URL) 链接——URL 不译，**链接文字必须译成泰语**。
+   实测模型最爱偷懒的地方就是链接文字：整句都译了，方括号里却留着英文
+   （`[pressure](URL)`、`[material derivative](URL)`），读者点开是泰语页、
+   看到的却是英文词。只有规则 7 那几类专有名词才允许留拉丁字母。
+   例：[pressure](URL) → [ความดัน](URL)；
+       [material derivative](URL) → [อนุพันธ์เชิงวัสดุ](URL)；
+       [gradient](URL) → [เกรเดียนต์](URL)。
 5. 保留 [^n] 脚注标记，编号不要变。
 6. 数学术语优先用泰语学术界的通用说法（จำนวนเฉพาะ = prime number、
    ฟังก์ชันซีตา = zeta function、การลู่เข้า = convergence）。
    **只有在泰语里确实找不到通行说法时**才保留英文原文——不要因为「不确定」就整词留
    英文，也不要生造泰语词、不要按发音硬拼成泰文字母。
-7. 人名、地名、机构名、期刊名、书名保留拉丁字母原文，不要音译生造。
+7. 人名、地名、机构名、期刊名、书名、软件名、arXiv/DOI 编号保留拉丁字母原文，
+   不要音译生造。**除这几类以外**，链接文字和正文里的英文普通名词一律要译成泰语。
 8. **不要把行内链接改成脚注**：[文字](§U0§) 这样的链接保持原样，只把「文字」译
    成泰语；§U0§ 是 URL 占位符，原封不动照抄，不要增删字符。
 9. 不要新增、删除或重排脚注标记：§F3§ 是脚注占位符，原封不动照抄。
 10. 不要漏译任何一行，包括单独成行的 where / for / if / and 这类短词。
 11. **同一术语在同一篇里必须译法一致**：第一次选定译法后后文一律沿用
     （不要一处 อักขระ、一处 ตัวอักษร）。
+12. **同一个 URL 的链接文字在全篇里只能有一种泰语写法**：不要在 A 处写
+    [ความดัน](URL)、B 处又写 [pressure](URL)，也不要一处 ความดัน、一处 แรงดัน。
 
 文风规则：
 * 词条开头用泰语百科式写法：「**ชื่อเรื่อง** (English name) คือ……」。
@@ -536,6 +544,33 @@ def looks_untranslated(src, out):
     return a == prose_only(out)
 
 
+def link_texts_left_source(src_lines, out_lines, script):
+    """译文里链接显示文字还留在**源语言**的普通名词。
+
+    只查源文里**小写开头**的链接文字——那必然是普通名词（`pressure`、
+    `material derivative`、`gradient`），必须译过去；大写开头的
+    （`Beltrami flow`、`Euler equations`、人名、机构名、软件名）留给人判断，
+    避免误报专有名词。
+
+    实测（Navier–Stokes 泰语稿）：312 条链接里 164 条显示文字还是英文，
+    而同一篇中文稿只有 23 条（且全是人名 / 软件名 / arXiv 编号）。
+    链接本身合法、`$` 也配对，预检和 `check_translation.py` 都抓不到 ——
+    只能在这里拦。
+    """
+    bad = []
+    for k, (a, b) in enumerate(zip(src_lines, out_lines), 1):
+        src = {}
+        for t, u in _MD_LINK_RE.findall(a):
+            src[u] = t
+        for t, u in _MD_LINK_RE.findall(b):
+            et = src.get(u)
+            if not et or not et[:1].islower():
+                continue
+            if not script.search(t):
+                bad.append((k, et))
+    return bad
+
+
 
 def term_index(terms):
     """小写英文名 → 目标语言译名。"""
@@ -638,15 +673,22 @@ def translate_line(cfg, line, terms=None, L=None):
     半截公式会把后面一大段正文吃进公式里，比留一句英文糟得多。
     """
     L = L or LANGS["zh"]
+    fallback = None
     for _ in range(2):
         try:
             out = _ask(cfg, system_with(line, terms, L=L), line, L)
         except Exception:                                # noqa: BLE001
-            return line
+            return fallback or line
         first = [l for l in out.split("\n") if l.strip()]
-        if first and dollars_balanced([line], [first[0]]):
+        if not first or not dollars_balanced([line], [first[0]]):
+            continue
+        if (not lines_missing_urls([line], [first[0]])
+                and not link_texts_left_source([line], [first[0]], L["script"])):
             return first[0]
-    return line
+        # 链接没保住 / 链接文字没译：先重试一次；实在不行也**不要退回英文原文**——
+        # 少几条链接的译文比半截英文好得多（实测逐行路径容易整行丢链接）。
+        fallback = first[0]
+    return fallback or line
 
 
 def dollars_balanced(src_lines, out_lines):
@@ -684,6 +726,8 @@ def translate_chunk(cfg, text, tries=3, terms=None, L=None):
     tmo = 240 if len(text) <= 400 else 900
     last = None
     echo = False
+    best = None          # 结构完好、毛病最少的**整块**回复
+    best_bad = None
     for i in range(tries):
         try:
             reply = W.llm_chat(
@@ -692,22 +736,37 @@ def translate_chunk(cfg, text, tries=3, terms=None, L=None):
                  {"role": "user", "content": text_prompt(safe, L)}],
                 temperature=0.2, timeout=tmo)
             out = restore(clean_reply(reply), urls)
-            # 行数必须对得上、每行的 $ 要成对（防截断回复）、原文的链接一条都不能少、
-            # 且不能把原文整段照抄回来。四条全过才收。
-            if (out.count("\n") + 1 == n
-                    and dollars_balanced(lines, out.split("\n"))
-                    and not lines_missing_urls(lines, out.split("\n"))
-                    and not looks_untranslated(text, out)):
+            # 结构硬条件：行数对得上 + 每行 `$` 成对（防截断 / 幻觉）。不满足直接丢。
+            if out.count("\n") + 1 != n or not dollars_balanced(lines, out.split("\n")):
+                last = out
+                if n <= 2 and i >= 1:
+                    break
+                continue
+            out_lines = out.split("\n")
+            echo = looks_untranslated(text, out)
+            miss = lines_missing_urls(lines, out_lines)
+            left = link_texts_left_source(lines, out_lines, L["script"])
+            if not echo and not miss and not left:
                 return out
-            if out.count("\n") + 1 == n and looks_untranslated(text, out):
-                echo = True
+            # 记下「毛病最少」的整块回复（丢链接 + 链接文字没译，都算毛病）。
+            # **为什么不直接退回逐行**：实测（Navier–Stokes 泰语稿）逐行兜底会把
+            # 一整行的 13 条链接全丢光，而整块路径一条不丢 —— 兜底比原路更差。
+            # 所以宁可要一个结构完好、少几条链接的整块译文。
+            bad = len(miss) + len(left)
+            if not echo and (best_bad is None or bad < best_bad):
+                best, best_bad = out, bad
             last = out
-            if n <= 2 and i >= 1:                        # 短段落重试一次没用，直接逐行
+            if n <= 2 and i >= 1:                        # 短段落重试一次没用
                 break
         except Exception as exc:                         # noqa: BLE001
             last = exc
+    if best is not None:
+        if best_bad:
+            print("  ⚠ %d 行里 %d 处毛病（丢链接 / 链接文字没译），取毛病最少的整块译文"
+                  "（首行：%s）" % (n, best_bad, lines[0][:50]))
+        return best
     if echo:
-        print("  ⚠ 疑似整段原样回抄（%d 行，首行：%s），已逐行重译"
+        print("  ⚠ 疑似整段原样回抄（%d 行，首行：%s），改逐行重译"
               % (n, lines[0][:60]))
     # 兜底：逐行翻译，宁可慢也要 1:1
     return "\n".join(translate_line(cfg, ln, terms, L) for ln in lines)
