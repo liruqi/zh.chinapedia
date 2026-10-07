@@ -534,3 +534,48 @@ python scripts/wikiterm.py --lang th --scan <dir>         # 泰语（en.wikipedi
    （doc id 里的点不触发扩展名解析）。新目录不需要 `_category_.json` 也能出侧栏。
 8. 收尾照旧：`prebuild_check` → `_mdxrun` → 真浏览器（playwright）看 h1/h2、
    `.katex` 与 `.katex-error` 计数、console 有无报错。
+
+### 2026-10-07 补：**重排本**（不是扫描件）要换渲染器
+
+陈景润 1973 **中文原文**（`docs/math/doi/10.1360/za1973-3-2-111.md`，18 页 = 印刷页
+111–128）是 **OCR 重排本**，上面第 1–2 条的做法**不管用**：
+
+- 文字层是垃圾（CID 映射错位，读出藏文乱码）；
+- 页面图是 **JBIG2** 编码 —— `pypdf` 的 `p.images` 拿不到，解不开。
+  换 **PDFium** 光栅化：
+
+  ```python
+  import pypdfium2 as pdfium      # pip install pypdfium2（走清华源）
+  doc = pdfium.PdfDocument(path)
+  for i in range(len(doc)):
+      doc[i].render(scale=2.0).to_pil().convert('L').save('pages/p%02d.png' % (i+1))
+  ```
+
+- 实测渲染尺寸 **1651×1424**（≈A4 比例，不是 300dpi 大图）；`scale=2.0` 已能读清
+  上下标，可疑处再交 PIL 的 LANCZOS 放大。
+- 裁图脚本 `scratch/_chen2/crop.py`（分数坐标 0..1、原点左上）：
+  `crop.py <PDF页> <l> <t> <r> <b> <out.png> [zoom]`。
+  **输出名必须带 `.png`**，否则 `Image.save` 报 `unknown file extension: ''`。
+- 打印页号 = PDF 页号 + 110。先看**整页图**定位，再按行裁；裁偏就沿 y 挪 0.01–0.05，
+  或收窄 x 区间。
+- **别用 `bc` 算坐标**：本机 Git Bash 没有 `bc`，`$(echo … | bc)` 会静默返回空串，
+  坐标直接写死分数或在 Python 里算。
+
+### 同一篇论文有中文原刊 + 英文重印本时：逐条对读
+
+两边都读一遍能互相纠错，但**以中文原刊为准**（用户要的是原刊转录）。实测差异
+（已全部写进该页「编者注」）：
+
+| 位置 | 中文原刊 | 英文重印本 |
+|---|---|---|
+| 式 (24) 的数值和 | 多一项 `0.03774/1.6` | 无 |
+| Euler 常数 | 写作 `r` | 写作 `\gamma` |
+| 正文「由 (23) 和 (24) 式」 | `和` | `and` |
+| 参考文献 [1] 卷号 | `2` | `12` |
+| 参考文献 [5] 页码 | 455–473 | 455–474 |
+| 参考文献 [6] 页码 | 418–425 | 419–425 |
+
+- 重排本自身的**误植**要**径改**并在「编者注」里点名：「李生素数」→「孪生素数」、
+  「Eular 常数」→「Euler 常数」。
+- 人名标音符号：原刊印 `Renyi`，而正文/英文页都写 `Rényi` → 列表里统一补足。
+- 「编者注」按英文页的写法放在文末（`---` 之后），只记**读法依据**与**与重印本的出入**。

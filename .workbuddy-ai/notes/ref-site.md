@@ -15,6 +15,11 @@
 - **最大的坑：`{expr}` 在 `compile()` 不报错，只在运行时炸**（残留裸 LaTeX 如
   `\operatorname{li}` → `ReferenceError: li is not defined` + 白屏）。「MDX COMPILE OK」
   **不能**作为通过标准，必须运行时 eval。`wiki2md.escape_mdx_braces()` 兜底。
+- **`\left(` / `\right)` 必须闭合在同一个 `$$…$$` 里**。长公式为了换行常被拆成两个
+  display 块，若把 `\left(` 留在上一块、`\right)` 放到下一块，`prebuild_check` 报
+  *Expected `\right`, got EOF* / *Expected EOF, got `\right`*。修法是在上一块尾补 `\right.`、
+  下一块首补 `\left.`（不可见定界符），两块各自闭合。实例见
+  `docs/math/doi/10.1360/za1973-3-2-111.md` 式 (24)。
 
 ### 标题里的裸 `<` / `>` 会让整站构建失败
 
@@ -95,7 +100,7 @@ rehype-katex 配 `macros`（兜底新导入条目），现存 .md 换成 `\mathb
 
 ## 跑构建的完整配方
 
-先 `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-2:$PATH"`。
+先 `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-3:$PATH"`。
 
 1. `npm.cmd install --no-audit --no-fund --registry=https://registry.npmmirror.com`
    （默认 registry 极慢，47 分钟装不完；镜像约 32 分钟。不改 package-lock.json）
@@ -247,3 +252,19 @@ JPEG 扫 `FFC0/FFC1/FFC2` 段（偏移 +5 是大端 `height,width`）；GIF `d[6
 - 取 `[[File:…]]` 必须**括号配对扫描**（`split_top_level` / `iter_wiki_files`），不能用
   `\|[^\[\]]*`：图注里常带 `[[domain coloring]]`、`{{cite web|url=…}}`，正则被内部 `[` 卡住，
   整条匹配不上（实测漏掉 `Cplot zeta.svg` 的 250px）。
+
+## 环境（Windows 本机）
+
+> 从 `memory/MEMORY.md` 搬来（那里只留指针，省注入预算）。
+
+- 先 `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-3:$PATH"`
+  （只有 `-3` 这个版本存在，别照抄旧笔记里的 `-2`）。
+- npm 默认 registry 极慢，装包加 `--registry=https://registry.npmmirror.com`。
+- 校验脚本在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`（`r_mdxrun.mjs` 等）；
+  快速渲染检查 `scratch/_render.mjs`，验 figure 用 `scratch/_figcheck.mjs`。
+  跑法：`NODE_PATH=<workspace>/node_modules node <workspace>/r_mdxrun.mjs <doc.md>`。
+- Python：带 PIL / pdfium 的是
+  `/c/Users/liruqi/.workbuddy-ai/binaries/python/envs/default/Scripts/python.exe`
+  ——**不是** `binaries/python/versions/3.13.12/python.exe`（那个没有 PIL）。
+- 未解：`docs/math/孪生素数.md` 曾被外部还原成 HEAD（无钩子/stash 痕迹）→ 再出现先怀疑
+  编辑器 / 同步工具。

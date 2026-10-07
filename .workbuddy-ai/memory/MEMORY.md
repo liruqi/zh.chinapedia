@@ -25,10 +25,10 @@ orphan 分支 `th` = 泰语稿，两版文件名一致（便于 `git diff main..
 5. **翻译带图条目必须先搬图再翻译**（`wikitext2md` → `wikiimg2r2.py` → `img2figure.py` → 翻译），
    译完中英两版 `grep -c '^<figure>'` 必须相等。
 6. **公式必须三行**（`$$` 独占一行）；一行式 `$$x$$` 会被 remark-math 6 当 inlineMath。
-7. **`docs/wow/` 占 99.8%**：改正文用 `npm run build:slim`，全量 `build:big`；都走
-   `scripts/build.mjs`，**别改回 `SKIP_WOW=1 docusaurus build` 的 POSIX 前缀写法**（Windows cmd
-   会当命令名）。构建**必须** `dangerouslyDisableSandbox`；safe-delete shim 会拦对已存在
-   `build-slim/` 的批量删除 → 先删干净或换新 `--out-dir`。
+7. **构建走现成脚本**（`npm run build:slim` / `build:big`，都经 `scripts/build.mjs`）：
+   `docs/wow/` 占 99.8% 所以别全量；**别改回 `SKIP_WOW=1 docusaurus build` 的 POSIX 前缀写法**；
+   构建**必须** `dangerouslyDisableSandbox`；safe-delete 会拦对已存在 `build-slim/` 的批量删除。
+   完整配方与坑见 `ref-site.md` §跑构建的完整配方。
 8. **线上 `zh.chinapedia.org` 跑 `docusaurus start`（dev server）**，服务器上 `npm run build`
    对访客无效。修复见 `DEPLOY.md`。
 9. **提交约定**：改动认为已完成就直接提交。凭证只放 `scripts/r2.local.json`（gitignore）。
@@ -54,17 +54,11 @@ orphan 分支 `th` = 泰语稿，两版文件名一致（便于 `git diff main..
 16. **泰语组合字符在正则里占多个码位**：`ร์` = U+0E23 + U+0E4C，`นาเวียร์?` 只让 `์` 可选，
     整簇要写 `(?:ร์)?`；改完拿真实字符串 `re.search` 验（`str.find` 命中不算数）。
 17. **内嵌 React 交互组件（canvas 动画）「编译过」不算数**：`_mdxrun.mjs` 对自带 ESM 的文档
-    只做编译检查，是空档。要 (a) SSR 冒烟（`@mdx-js/mdx` compile → 临时 `.mjs` →
-    `renderToStaticMarkup`，仓库自带 react 19），(b) 真浏览器悬停/截图（playwright 在 managed
-    workspace，浏览器用现成的 `ms-playwright/chromium-1246`，`executablePath` 指过去）；几何
-    改动优先做**差分测试**。配方见 `ref-site.md` §校验。
+    只做编译检查，是空档。要 SSR 冒烟 + 真浏览器悬停/截图，几何改动优先**差分测试**。
+    完整配方（含 playwright 用现成 `chromium-1246` 的写法）见 `ref-site.md` §校验。
 
 ## 环境
 
-- 先 `export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-3:$PATH"`
-  （只有 `-3` 这个版本存在，别照抄旧笔记里的 `-2`）。
-- npm 默认 registry 极慢，装包加 `--registry=https://registry.npmmirror.com`。
-- 校验脚本在 `C:\Users\liruqi\.workbuddy-ai\binaries\node\workspace`（`r_mdxrun.mjs` 等）；
-  快速渲染检查 `scratch/_render.mjs`，验 figure 用 `scratch/_figcheck.mjs`。
-- 未解：`docs/math/孪生素数.md` 曾被外部还原成 HEAD（无钩子/stash 痕迹）→ 再出现先怀疑
-  编辑器 / 同步工具。
+见 `notes/ref-site.md` §环境（node 路径 / npm 镜像 / 校验脚本位置 / 带 PIL 的那个 python）。
+两个高频点：`export PATH="/c/Users/liruqi/.workbuddy-ai/binaries/node/versions/22.22.2-3:$PATH"`；
+装包加 `--registry=https://registry.npmmirror.com`。
