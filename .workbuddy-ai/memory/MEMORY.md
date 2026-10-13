@@ -63,6 +63,9 @@ orphan 分支 `th` = 泰语稿，两版文件名一致（便于 `git diff main..
     细节 + `scratch/_xcheck/` 脚本见 `memory/2026-10-13.md`。
 19. **裁书影前先用 `scratch/_chen2/inkbox.py` 量墨迹行段**（输出每段 y/x 区间），再按
     区间高倍裁；凭猜坐标十有八九裁出白片。另：`grep -c` 数的是**行数**不是次数。
+20. **`docusaurus.config.js` 里 `docs:` 和 `blog:` 的 `remarkPlugins`/`rehypePlugins` 是分开配的**，
+    加一类内容忘了另一边就会出现「博文里的 `$$…$$` 不是公式、`{…}` 被当 JS 表达式 → 整站构建失败」。
+    同理**预检脚本的插件表必须与真管线一致**，否则 `npm run check` 全绿而真构建炸（2026-10-14 踩过）。
 
 ## 环境
 
