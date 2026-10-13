@@ -75,7 +75,14 @@ const BARE_URL_RE = /\[https?:\/\/[^\]]+\](?!\()/g;
 for (const f of files) {
   const raw = fs.readFileSync(f);
   const text = raw.toString('utf8');
-  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
+  // `<!-- truncate -->` 是 Docusaurus 博客的标准截断标记，真管线里不会炸：mdx-loader
+  // 自带 `@slorber/remark-comment`（mdx1Compat.comments 默认开）会把 HTML 注释摘掉
+  // ——见 node_modules/@docusaurus/mdx-loader/lib/processor.js 里的 await import。
+  // 但这里的裸 compile() 没挂那个插件，会误报 `Unexpected character '!'`（mdx 不认 HTML 注释），
+  // 每个用了标准标记的博文都中招。先摘掉，让预检和真管线对齐。
+  // 实测：scratch/_bisect/t3.md 裸注释必炸，同一文件摘掉注释后编译通过。
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+    .replace(/<!--\s*truncate\s*-->/g, '');
 
   // ---- 1. 标题里的裸 < > ------------------------------------------------
   for (const line of body.split(/\r?\n/)) {

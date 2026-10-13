@@ -128,6 +128,13 @@ const config = {
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'ignore',
+          // 和 docs 一样接上数学管线。**不加这两行，博客里的 $…$ / $$…$$ 根本不是公式**：
+          // remark-math 缺席时公式里的 {…} 会被 MDX 当成 JS 表达式交给 acorn，
+          // 第一个 {\ 就报 `Could not parse expression with acorn`（整站构建失败）。
+          // 实测：09-18 那篇报在 `{\lfloor x\rfloor}`（正文偏移 1054 + frontmatter 189 = 1243），
+          // 09-23 那篇报在 `{\infty}`（偏移 443），与报错里的 place.offset 逐字节对上。
+          remarkPlugins: [remarkMath],
+          rehypePlugins: [[rehypeKatex, { macros: katexMacros }]],
         },
         theme: {
           customCss: './src/css/custom.css',
