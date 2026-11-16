@@ -1,3 +1,6 @@
+# Cloudflare Workers Builds 在 clone 后会自动跑 git submodule update --init --recursive，
+# 但构建容器里没有 GitHub SSH 私钥，git@github.com: 形式的 URL 必然失败。
+# capycraft 是公开仓库，用 HTTPS 匿名即可拉取；不要在提交里塞 PAT。
 [submodule "docs/wow/capycraft"]
 	path = docs/wow/capycraft
-	url = git@github.com:liruqi/capycraft.git
+	url = https://github.com/liruqi/capycraft.git
