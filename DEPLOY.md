@@ -22,27 +22,49 @@ cd ~/zh.chinapedia  # 或实际路径
 git pull origin main
 ```
 
-### 2. 正式构建
+### 2. 正式构建（混合构建，默认）
 
 ```bash
 # 先确认 node 在 PATH
 export PATH="/opt/homebrew/bin:$PATH"  # 或你的 node 路径
 
-# 构建（Mac Mini 需要 8192 MB 堆；4096 会 OOM）
-npm run build:big
+# 子模块必须存在，否则 render_wow.mjs 会直接报错退出
+git submodule update --init docs/wow/capycraft
+
+npm run build
 ```
 
-构建成功后产物在 `build/` 目录。
+产物在 `build/`：主站（约 63 页）+ `build/wiki/wow/capycraft/**.html`（9710 篇）。
+两步合计约 5 分钟、峰值内存 ~100 MB，可在 Cloudflare Workers Builds（20 分钟 / 8 GB）内跑完。
 
-> 全量约 9711 页，client ~24m + server ~7m。若只想验证正文改动，
-> 用 `npm run build:slim` 先把 `build-slim/` 跑出来（跳过 `docs/wow/`）。
+**为什么不再全量编译**：Docusaurus 会把 9711 篇 MDX 全塞进一个 webpack 模块图并单进程
+SSG，实测 12 分钟就吃掉 4 GB 堆 OOM；全量构建本地约 client 24m + server 7m，
+CF 的 20 分钟上限无论如何都不够。混合构建让主站走 `SKIP_WOW=1`，这 9710 篇由
+`scripts/render_wow.mjs` 逐文件流式渲染（依赖 `marked`），内存恒定。
+这些页面复用主站 `<head>` 里的 CSS，但**不加载 Docusaurus 的 JS**（路由清单里没有它们，
+hydration 会白屏），因此没有 navbar / sidebar / 客户端路由 / 搜索。
 
-`build` / `build:slim` / `build:big` / `build:faster` 都走 `scripts/build.mjs`，
+可用的构建脚本：
+
+| 命令 | 行为 |
+|---|---|
+| `npm run build` | 混合构建，产物 `build/`，CI 与日常发布都用这个 |
+| `npm run build:full` | 纯 Docusaurus 全量构建（会 OOM / 很慢，仅本地排查用） |
+| `npm run build:slim` | 只编主站，产物 `build-slim/`，不含 wow 页 |
+| `npm run build:big` | 全量构建并追加 `--max-old-space-size=8192`（Mac Mini 需要） |
+| `npm run build:faster` | 全量 + Rspack/SWC，需先装 `@docusaurus/faster` |
+
+`build` / `build:full` / `build:slim` / `build:big` / `build:faster` 都走 `scripts/build.mjs`，
 由 Node 设好环境变量再启动 docusaurus —— 因为 npm 在 Windows 上用 cmd.exe 跑 scripts，
 `SKIP_WOW=1 docusaurus build` 这种 POSIX 前缀会被 cmd 当成命令名而直接失败。
-`build:big` 只是**追加** `--max-old-space-size=8192`，你自己设了 `NODE_OPTIONS` 就尊重你的。
+`--skip-wow` 与 `--slim` 的区别是前者输出到默认 `build/`，后者输出到 `build-slim/`。
 
-> `build:faster` 需要先装 `@docusaurus/faster`（Rspack + SWC），没装会直接报错退出。
+### Cloudflare Workers Builds
+
+`wrangler.jsonc` 把 `assets.directory` 指向 `./build`，控制台的 Build command 保持
+`npm run build`、Deploy command 保持 `npx wrangler deploy` 即可。
+`name` 必须与控制台里的 Worker 名一致；`html_handling=auto-trailing-slash` 会把
+`/wiki/wow/...` 映射到对应的 `.html` 文件。
 
 ### 3. 停止现有的 dev server
 
@@ -138,7 +160,9 @@ curl -s https://zh.chinapedia.org/wiki/math/黎曼ζ函数 | grep -o 'figure sty
 # 期望：250px / 200px / 308px / 300px
 ```
 
-## 背景：站点没有 CI
+## 背景：CI 在 Cloudflare 侧
 
-仓库无 `.github/workflows`，push 不会自动部署。所以"改了 CSS 线上没变化"时，
-先查 `build/` 的 mtime 是不是比源码旧——而不是怀疑缓存。
+仓库无 `.github/workflows`；Cloudflare Workers Builds 监听 `main`，push 会触发
+`npm run build` + `npx wrangler deploy`。所以"改了 CSS 线上没变化"时，
+先看 Build history 有没有失败（例如子模块没拉到、堆 OOM），再查 `build/` 的 mtime
+是不是比源码旧——而不是怀疑缓存。

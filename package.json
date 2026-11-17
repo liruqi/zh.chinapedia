@@ -6,7 +6,8 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start --host 0.0.0.0",
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs --skip-wow && node scripts/render_wow.mjs build",
+    "build:full": "node scripts/build.mjs",
     "build:slim": "node scripts/build.mjs --slim",
     "build:big": "node scripts/build.mjs --big",
     "build:faster": "node scripts/build.mjs --faster",
@@ -31,7 +32,8 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "^3.10.2",
-    "@docusaurus/types": "^3.10.2"
+    "@docusaurus/types": "^3.10.2",
+    "marked": "^18.2.1"
   },
   "browserslist": {
     "production": [
