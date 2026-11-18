@@ -12,11 +12,10 @@ import rehypeKatex from 'rehype-katex';
 // 维基原文大量使用，但 KaTeX 不认识，页面上会渲染成红色 parse error。
 // 这里把它们补上，新导入的条目不用再手工替换。
 // 参考 https://en.wikipedia.org/wiki/Help:Displaying_a_formula
-// docs/wow/capycraft 是 submodule，9711 篇魔兽数据，占全站 99.8%。
-// 每次构建都要把这一万篇塞进 webpack，内存峰值非常高（默认堆会 OOM，
-// 表现是 v8::FatalProcessOutOfMemory + zsh: abort），单次还要 30 分钟起。
-// 改正文/样式时用  npm run build:slim  跳过它，一两分钟出结果；
-// 正式发布不要加这个变量。产物写进 build-slim/，避免误把瘦身版发布出去。
+// docs/wow/capycraft 是 submodule，9710 篇魔兽数据，占全站 99.8%。
+// 全量塞进 webpack 会 OOM（4GB 堆 / 约 12 分钟就崩），所以默认 npm run build 走混合构建：
+// 主站带 SKIP_WOW=1 编译，这 9710 篇由 scripts/render_wow.mjs 逐文件渲染成静态 HTML，
+// 合并写进同一个 build/。只有显式 npm run build:full / build:big 才会把它们交给 Docusaurus。
 const SKIP_WOW = process.env.SKIP_WOW === '1';
 const DEFAULT_EXCLUDE = [
   '**/_*.{js,jsx,ts,tsx,md,mdx}',
@@ -47,7 +46,7 @@ const config = {
   favicon: 'img/favicon.ico',
   future: {
     v4: false,
-    // 9711 篇 wow 页面用 webpack 编译，内存峰值很高（4G 堆会 OOM）。
+    // 全量构建时 9710 篇 wow 页面用 webpack 编译，内存峰值很高（4G 堆会 OOM）。
     // 装了 @docusaurus/faster 之后用  npm run build:faster  打开：换成 Rspack + SWC，
     // 内存和时间都会明显下降。**没装这个包就别开**，Docusaurus 会直接报错退出。
     //

@@ -1,0 +1,14 @@
+{
+  // Workers Builds 要求这里的 name 与控制台中的 Worker 名一致。
+  // 若控制台里叫别的名字，合并前改这一行；部署时 Workers Builds 还会用
+  // WRANGLER_CI_OVERRIDE_NAME 把实际部署目标覆盖为已连接的 Worker。
+  "name": "zh-chinapedia",
+  "compatibility_date": "2026-11-17",
+  // npm run build 的产物：主站 slim 构建 + 9710 篇 wow 静态页，合并写在 build/。
+  "assets": {
+    "directory": "./build",
+    // 默认行为：/wiki/foo 自动映射到 build/wiki/foo.html。
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

@@ -17,10 +17,14 @@
 //
 // 用法（和原来的 npm script 一一对应）
 // -----------------------------------
-//     node scripts/build.mjs                  # 等价 npm run build
+//     node scripts/build.mjs                  # 全量 Docusaurus 构建（等价 npm run build:full）
 //     node scripts/build.mjs --slim           # 等价 npm run build:slim（跳过 wow/，输出 build-slim/）
+//     node scripts/build.mjs --skip-wow       # 跳过 wow/ 但输出到默认 build/，供混合构建使用
 //     node scripts/build.mjs --big            # 等价 npm run build:big（8G 堆）
 //     node scripts/build.mjs --faster         # 等价 npm run build:faster（需要 @docusaurus/faster）
+//
+// 混合构建（默认 npm run build）：--skip-wow 先编主站，再由 render_wow.mjs 把
+// 9710 篇 wow 文档流式渲染进同一个 build/，避免全量 SSG 的 4GB 堆 OOM。
 //
 // 也接受原样透传给 docusaurus 的参数：
 //     node scripts/build.mjs --slim --out-dir build-preview
@@ -59,6 +63,8 @@ for (const arg of argv) {
   if (arg === '--slim') {
     env.SKIP_WOW = '1';
     cliArgs.push('--out-dir', 'build-slim');
+  } else if (arg === '--skip-wow') {
+    env.SKIP_WOW = '1';
   } else if (arg === '--big') {
     env.NODE_OPTIONS = withNodeOption(env.NODE_OPTIONS, '--max-old-space-size=8192');
   } else if (arg === '--faster') {
