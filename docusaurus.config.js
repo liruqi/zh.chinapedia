@@ -179,6 +179,10 @@ const config = {
             position: 'left',
             label: '条目',
           },
+          // wow 分区走混合构建（docs/wow/** 被 exclude，页面由 scripts/render_wow.mjs
+          // 生成），不在 Docusaurus 的路由表里，所以用 href 而不是 to：
+          // 用 to 会被客户端路由接管，拿不到静态页。
+          { href: '/wiki/wow/', label: '魔兽世界', position: 'left' },
           { to: '/blog', label: '博客', position: 'left' },
           {
             href: 'https://github.com/liruqi/zh.chinapedia',
@@ -196,6 +200,10 @@ const config = {
               {
                 label: '条目',
                 to: '/wiki/intro',
+              },
+              {
+                label: '魔兽世界',
+                href: '/wiki/wow/',
               },
             ],
           },

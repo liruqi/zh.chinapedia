@@ -44,6 +44,14 @@ CF 的 20 分钟上限无论如何都不够。混合构建让主站走 `SKIP_WOW
 这些页面复用主站 `<head>` 里的 CSS，但**不加载 Docusaurus 的 JS**（路由清单里没有它们，
 hydration 会白屏），因此没有 navbar / sidebar / 客户端路由 / 搜索。
 
+因为 `docs/wow/**` 被整体排除，Docusaurus 连 `docs/wow/_category_.json` 里的
+generated-index（slug `wow`）也不再生成，所以 `render_wow.mjs` 会一并补出目录层：
+`/wiki/wow/`、`/wiki/wow/turtle`（capycraft 之外的 `turtle.md`），以及
+`/wiki/wow/capycraft/` 和 `item/ npc/ quest/ set/ dungeon/ dungeon/ent/ worldboss/ transport/`
+各分区的 `index.html`（按标题列出全部条目，item 的 8421 条单页分栏展示）。
+navbar 里的「魔兽世界」用 `href` 指向 `/wiki/wow/`——这些页面不在 Docusaurus 路由表里，
+用 `to` 会被客户端路由接管而拿不到静态页。
+
 可用的构建脚本：
 
 | 命令 | 行为 |
