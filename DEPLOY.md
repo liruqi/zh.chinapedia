@@ -49,8 +49,11 @@ generated-index（slug `wow`）也不再生成，所以 `render_wow.mjs` 会一�
 `/wiki/wow/`、`/wiki/wow/turtle`（capycraft 之外的 `turtle.md`），以及
 `/wiki/wow/capycraft/` 和 `item/ npc/ quest/ set/ dungeon/ dungeon/ent/ worldboss/ transport/`
 各分区的 `index.html`（按标题列出全部条目，item 的 8421 条单页分栏展示）。
-navbar 里的「魔兽世界」用 `href` 指向 `/wiki/wow/`——这些页面不在 Docusaurus 路由表里，
-用 `to` 会被客户端路由接管而拿不到静态页。
+navbar / footer 里的「魔兽世界」必须用 `type: 'html'` 直出原生 `<a>`（footer 用 `{ html }`）：
+Docusaurus 的 `href` 仍然会渲染成 React Router 的 `<Link>`，点击后走客户端路由；路由表里
+没有 `/wiki/wow`，于是直接渲染 NotFound 组件、URL 停在 `/wiki/wow`，只有 Ctrl+R 才整页加载。
+正文里指向 `/wiki/wow` 的站内链接由 `src/clientModules/wowStaticNav.js` 在 capture 阶段接管，
+改成 `window.location.assign()` 整页跳转。
 
 可用的构建脚本：
 
