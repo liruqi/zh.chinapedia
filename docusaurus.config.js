@@ -71,6 +71,11 @@ const config = {
   },
   trailingSlash: false,
 
+  // /wiki/wow/** 是 render_wow.mjs 生成的静态页，不在 Docusaurus 路由表里。
+  // 这个 client module 把指向它们的站内点击改成整页跳转，避免 React Router
+  // 渲染 NotFound（见 src/clientModules/wowStaticNav.js）。
+  clientModules: ['./src/clientModules/wowStaticNav.js'],
+
   // Set the production url of your site here
   url: 'https://zh.chinapedia.org',
   // Set the /<baseUrl>/ pathname under which your site is served
@@ -180,9 +185,14 @@ const config = {
             label: '条目',
           },
           // wow 分区走混合构建（docs/wow/** 被 exclude，页面由 scripts/render_wow.mjs
-          // 生成），不在 Docusaurus 的路由表里，所以用 href 而不是 to：
-          // 用 to 会被客户端路由接管，拿不到静态页。
-          { href: '/wiki/wow/', label: '魔兽世界', position: 'left' },
+          // 生成），不在 Docusaurus 的路由表里。这里用 type: 'html' 直出原生 <a>：
+          // 用 href 的话 Docusaurus 仍会渲染成 React Router 的 <Link>，点击走客户端
+          // 路由 → 命中不了路由 → 直接显示 NotFound，URL 停在 /wiki/wow。
+          {
+            type: 'html',
+            position: 'left',
+            value: '<a class="navbar__item navbar__link" href="/wiki/wow/">魔兽世界</a>',
+          },
           { to: '/blog', label: '博客', position: 'left' },
           {
             href: 'https://github.com/liruqi/zh.chinapedia',
@@ -201,10 +211,8 @@ const config = {
                 label: '条目',
                 to: '/wiki/intro',
               },
-              {
-                label: '魔兽世界',
-                href: '/wiki/wow/',
-              },
+              // 同上：必须是原生 <a>，否则 footer 的 Link 也会走客户端路由
+              { html: '<a class="footer__link-item" href="/wiki/wow/">魔兽世界</a>' },
             ],
           },
           {
